@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <!-- Outer frame: dark bg, thick white border -->
+  <rect width="512" height="512" fill="#0e0f11"/>
+  <rect x="8" y="8" width="496" height="496" fill="#0e0f11" stroke="#e5e7eb" stroke-width="16"/>
+
+  <!-- 2x2 grid of project cards -->
+  <!-- Top-left card (active: green accent) -->
+  <rect x="56" y="56" width="180" height="170" fill="#141517" stroke="#e5e7eb" stroke-width="8"/>
+  <rect x="64" y="64" width="180" height="170" fill="none" stroke="rgba(229,231,235,0.2)" stroke-width="0"/>
+  <!-- Hard shadow -->
+  <rect x="62" y="62" width="180" height="170" fill="#e5e7eb" opacity="0.18"/>
+  <rect x="56" y="56" width="180" height="170" fill="#141517" stroke="#e5e7eb" stroke-width="8"/>
+  <!-- Three dots (code lines) -->
+  <rect x="80" y="86" width="50" height="10" fill="#4ade80"/>
+  <rect x="80" y="106" width="90" height="10" fill="#e5e7eb" opacity="0.5"/>
+  <rect x="80" y="126" width="70" height="10" fill="#e5e7eb" opacity="0.3"/>
+  <!-- Status dot -->
+  <circle cx="210" cy="78" r="10" fill="#4ade80"/>
+
+  <!-- Top-right card -->
+  <rect x="282" y="62" width="180" height="170" fill="#e5e7eb" opacity="0.18"/>
+  <rect x="276" y="56" width="180" height="170" fill="#141517" stroke="#e5e7eb" stroke-width="8"/>
+  <rect x="300" y="86" width="60" height="10" fill="#e5e7eb" opacity="0.5"/>
+  <rect x="300" y="106" width="100" height="10" fill="#e5e7eb" opacity="0.3"/>
+  <rect x="300" y="126" width="40" height="10" fill="#e5e7eb" opacity="0.2"/>
+
+  <!-- Bottom-left card -->
+  <rect x="62" y="282" width="180" height="170" fill="#e5e7eb" opacity="0.18"/>
+  <rect x="56" y="276" width="180" height="170" fill="#141517" stroke="#e5e7eb" stroke-width="8"/>
+  <rect x="80" y="306" width="80" height="10" fill="#e5e7eb" opacity="0.5"/>
+  <rect x="80" y="326" width="50" height="10" fill="#e5e7eb" opacity="0.3"/>
+  <rect x="80" y="346" width="110" height="10" fill="#e5e7eb" opacity="0.2"/>
+
+  <!-- Bottom-right card (with terminal bracket) -->
+  <rect x="282" y="282" width="180" height="170" fill="#e5e7eb" opacity="0.18"/>
+  <rect x="276" y="276" width="180" height="170" fill="#141517" stroke="#e5e7eb" stroke-width="8"/>
+  <!-- Terminal prompt symbol > -->
+  <path d="M308 316 L340 346 L308 376" stroke="#e5e7eb" stroke-width="12" stroke-linecap="square" stroke-linejoin="miter" fill="none"/>
+  <rect x="352" y="368" width="60" height="10" fill="#e5e7eb" opacity="0.5"/>
+</svg>
