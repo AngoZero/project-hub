@@ -1,0 +1,60 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --bundles dmg
+          - platform: windows-latest
+            args: --bundles msi
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build and publish Tauri release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: __VERSION__
+          releaseName: Project Hub v__VERSION__
+          releaseBody: |
+            Project Hub release for macOS and Windows.
+
+            Included artifacts:
+            - macOS `.dmg`
+            - Windows `.msi`
+
+            This first release pipeline is unsigned, so macOS Gatekeeper and Windows SmartScreen warnings are expected.
+          args: ${{ matrix.args }}

@@ -73,6 +73,15 @@ npx tauri build --debug --bundles msi
 - `source "$HOME/.cargo/env" && cargo check --manifest-path src-tauri/Cargo.toml`
 - `cargo check --manifest-path src-tauri/Cargo.toml`
 
+## GitHub Actions
+
+- CI runs on every push and pull request to `main`.
+- Releases run when you push a tag like `v0.1.0`.
+- The release workflow publishes:
+  - macOS `.dmg`
+  - Windows `.msi`
+- This first pipeline is unsigned, so OS security warnings are expected on install/open.
+
 ## Notes
 
 - Persistence lives in the local app data directory under `project-hub/state.json`.
