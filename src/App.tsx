@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, RefreshCcw, Search, SlidersHorizontal } from 'lucide-react';
-import { I18nProvider, getProjectStatusLabel, getProjectTypeLabel, getViewLabel, useI18n } from './app/i18n';
+import { I18nProvider, getFileManagerLabel, getProjectStatusLabel, getProjectTypeLabel, getViewLabel, useI18n } from './app/i18n';
 import { PROJECT_STATUSES, PROJECT_TYPES, type ProjectRecord } from './app/types';
 import { ProjectCard } from './components/ProjectCard';
 import { ProjectDetailModal } from './components/ProjectDetailModal';
@@ -9,15 +9,17 @@ import { ProjectTable } from './components/ProjectTable';
 import { RootFoldersView } from './components/RootFoldersView';
 import { SettingsView } from './components/SettingsView';
 import { Sidebar } from './components/Sidebar';
+import { SplashScreen } from './components/SplashScreen';
 import { useProjectHub } from './hooks/useProjectHub';
 import { inspectProjectPath, pickProjectFolder } from './services/desktopApi';
-import { normalizePath } from './utils/paths';
+import { getComparablePath } from './utils/paths';
 
 function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
-  const { t } = useI18n();
+  const { platform, t } = useI18n();
   const [isProjectModalOpen, setProjectModalOpen] = useState(false);
   const [isProjectDetailOpen, setProjectDetailOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectRecord | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const catalogProjects = useMemo(
     () => (hub.visibleProjects.length > 0 ? hub.visibleProjects : hub.sampleProjects),
@@ -48,7 +50,8 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
 
     handleChangeView('catalog');
 
-    const existingProject = hub.store.projects.find((project) => normalizePath(project.path) === selectedPath);
+    const comparableSelectedPath = getComparablePath(selectedPath, platform);
+    const existingProject = hub.store.projects.find((project) => getComparablePath(project.path, platform) === comparableSelectedPath);
 
     if (existingProject) {
       hub.setSelectedProjectId(existingProject.id);
@@ -74,7 +77,10 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
 
     try {
       await hub.persistProject(importedProject, {
-        successMessage: t('statusSuccessImported', { name: importedProject.name }),
+        successMessage: t('statusSuccessImported', {
+          name: importedProject.name,
+          manager: getFileManagerLabel(platform, t),
+        }),
       });
       hub.setSelectedProjectId(importedProject.id);
       setProjectDetailOpen(true);
@@ -114,11 +120,15 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
   }, [hub.store.preferences.theme]);
 
   return (
-    <div className="app-shell">
-      <Sidebar
-        currentView={hub.currentView}
-        onChange={handleChangeView}
-      />
+    <>
+      <SplashScreen isLoading={hub.isLoading} />
+      <div className={`app-shell ${sidebarCollapsed ? 'app-shell--collapsed' : ''}`}>
+        <Sidebar
+          currentView={hub.currentView}
+          collapsed={sidebarCollapsed}
+          onChange={handleChangeView}
+          onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
+        />
 
       <main className="main-layout">
         <header className="topbar">
@@ -331,6 +341,7 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
         onAction={(projectId, kind, targetId) => void hub.executeProjectAction(projectId, kind, targetId)}
       />
     </div>
+    </>
   );
 }
 

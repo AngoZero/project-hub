@@ -1,6 +1,6 @@
 import { FolderPlus, RefreshCcw, Trash2 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
-import { useI18n } from '../app/i18n';
+import { getRootsPathPlaceholder, useI18n } from '../app/i18n';
 import type { RootFolder } from '../app/types';
 import { createId } from '../utils/formatters';
 
@@ -19,7 +19,7 @@ interface RootFolderForm {
 }
 
 export function RootFoldersView({ roots, defaultDepth, onSave, onDelete, onRescan }: RootFoldersViewProps) {
-  const { t } = useI18n();
+  const { platform, t } = useI18n();
   const { register, handleSubmit, reset } = useForm<RootFolderForm>({
     defaultValues: {
       path: '',
@@ -62,7 +62,7 @@ export function RootFoldersView({ roots, defaultDepth, onSave, onDelete, onResca
           </div>
           <label className="field">
             <span>{t('rootsPath')}</span>
-            <input {...register('path', { required: true })} placeholder={t('rootsPathPlaceholder')} />
+            <input {...register('path', { required: true })} placeholder={getRootsPathPlaceholder(platform, t)} />
           </label>
           <label className="field">
             <span>{t('rootsLabel')}</span>

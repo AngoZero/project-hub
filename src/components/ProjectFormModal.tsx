@@ -3,7 +3,7 @@ import { Plus, Trash2, X } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { getProjectStatusLabel, getProjectTypeLabel, useI18n } from '../app/i18n';
+import { getProjectStatusLabel, getProjectTypeLabel, getRootsPathPlaceholder, useI18n } from '../app/i18n';
 import { PROJECT_STATUSES, PROJECT_TYPES, type ProjectRecord } from '../app/types';
 import { createId, joinLines } from '../utils/formatters';
 
@@ -74,7 +74,7 @@ function projectToFormValues(project: ProjectRecord | null): ProjectFormValues {
 }
 
 export function ProjectFormModal({ project, isOpen, onClose, onSubmit }: ProjectFormModalProps) {
-  const { t } = useI18n();
+  const { platform, t } = useI18n();
   const form = useForm<ProjectFormValues>({
     resolver: zodResolver(createProjectFormSchema(t)),
     defaultValues: projectToFormValues(project),
@@ -164,7 +164,7 @@ export function ProjectFormModal({ project, isOpen, onClose, onSubmit }: Project
             </label>
             <label className="field">
               <span>{t('rootsPath')}</span>
-              <input {...form.register('path')} />
+              <input {...form.register('path')} placeholder={getRootsPathPlaceholder(platform, t)} />
               <small>{form.formState.errors.path?.message}</small>
             </label>
             <label className="field field--wide">

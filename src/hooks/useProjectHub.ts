@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { buildSampleProjects, FALLBACK_STORE } from '../app/demoData';
 import { resolveLanguagePreference, translate, type TranslationKey } from '../app/i18n';
+import { detectPlatform } from '../app/platform';
 import type { ActionResult, AppStore, CatalogFilters, NavItem, Preferences, ProjectRecord, RootFolder } from '../app/types';
 import { deleteProject, deleteRootFolder, loadAppStore, runProjectAction, savePreferences, saveProject, saveRootFolder, scanProjects } from '../services/desktopApi';
 import { filterProjects, sortProjects } from '../utils/projectFilters';
@@ -105,7 +106,7 @@ export function useProjectHub() {
   );
 
   const sampleProjects = useMemo(
-    () => (store.projects.length === 0 ? buildSampleProjects(resolvedLanguage) : []),
+    () => (store.projects.length === 0 ? buildSampleProjects(resolvedLanguage, detectPlatform()) : []),
     [resolvedLanguage, store.projects.length],
   );
 

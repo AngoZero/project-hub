@@ -133,6 +133,7 @@ button:focus-visible {
   min-height: 100vh;
   gap: 1rem;
   padding: 1rem;
+  transition: grid-template-columns 0.25s ease;
 }
 
 .sidebar {
@@ -144,6 +145,8 @@ button:focus-visible {
   background: var(--bg-elevated);
   padding: 1.4rem;
   box-shadow: var(--shadow);
+  transition: padding 0.25s ease;
+  overflow: hidden;
 }
 
 .sidebar__brand {
@@ -216,6 +219,49 @@ button:focus-visible {
   background: var(--bg-soft);
   color: var(--text);
   border-color: var(--border);
+}
+
+/* ── Sidebar Toggle Button ──────────────────────────── */
+
+.sidebar__toggle {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  border: 2px solid var(--border);
+  border-radius: 0;
+  background: var(--bg-soft);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.sidebar__toggle:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ── Sidebar Collapsed State ────────────────────────── */
+
+.app-shell--collapsed {
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+
+.sidebar--collapsed {
+  padding: 1rem 0.6rem;
+  align-items: center;
+}
+
+.sidebar--collapsed .sidebar__brand {
+  justify-content: center;
+}
+
+.sidebar--collapsed .sidebar__nav-item {
+  justify-content: center;
+  padding: 0.85rem;
 }
 
 .main-layout {
@@ -1106,6 +1152,105 @@ button:focus-visible {
 
   .list-editor {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ── Splash Screen ──────────────────────────────────── */
+
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+
+.splash--exiting {
+  animation: splash-out 0.4s ease-in forwards;
+  pointer-events: none;
+}
+
+.splash__logo {
+  width: 120px;
+  height: 120px;
+  border: var(--border-width) solid var(--border);
+  box-shadow: var(--shadow-lg);
+  animation: splash-logo-in 0.4s ease-out;
+}
+
+.splash__title {
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+  color: var(--text);
+  margin-top: 1.5rem;
+  animation: splash-text-in 0.3s ease-out 0.3s both;
+}
+
+.splash__bar {
+  width: 200px;
+  height: 8px;
+  border: 2px solid var(--border);
+  margin-top: 1.5rem;
+  overflow: hidden;
+  animation: splash-text-in 0.3s ease-out 0.5s both;
+}
+
+.splash__bar-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--success);
+  animation: splash-bar-fill 1.5s ease-in-out infinite;
+}
+
+@keyframes splash-logo-in {
+  from {
+    transform: scale(0.5);
+    opacity: 0;
+    box-shadow: 0 0 0 0 rgba(229, 231, 235, 0);
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: var(--shadow-lg);
+  }
+}
+
+@keyframes splash-text-in {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes splash-bar-fill {
+  0% {
+    width: 0%;
+  }
+  50% {
+    width: 90%;
+  }
+  100% {
+    width: 0%;
+  }
+}
+
+@keyframes splash-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.05);
   }
 }
 

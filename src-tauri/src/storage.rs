@@ -1,5 +1,5 @@
 use crate::types::{AppStore, ProjectRecord, RootFolder};
-use crate::utils::{is_absolute_path, make_id, normalize_path, now_iso, sanitize_list};
+use crate::utils::{comparable_path, is_absolute_path, make_id, normalize_path, now_iso, sanitize_list};
 use std::{
   fs,
   path::{Path, PathBuf},
@@ -115,11 +115,11 @@ pub fn sanitize_project(project: &ProjectRecord) -> Result<ProjectRecord, String
 }
 
 pub fn has_project_with_path(store: &AppStore, path: &str, current_id: &str) -> bool {
-  let normalized = normalize_path(path);
+  let normalized = comparable_path(path);
   store
     .projects
     .iter()
-    .any(|project| normalize_path(&project.path) == normalized && project.id != current_id)
+    .any(|project| comparable_path(&project.path) == normalized && project.id != current_id)
 }
 
 pub fn maybe_seed_default_roots(store: &mut AppStore) {
@@ -131,6 +131,15 @@ pub fn maybe_seed_default_roots(store: &mut AppStore) {
     return;
   };
 
+  #[cfg(target_os = "windows")]
+  let candidates = [
+    ("Documents dev", home.join("Documents/dev")),
+    ("Documents _dev", home.join("Documents/_dev")),
+    ("Projects", home.join("Projects")),
+    ("Source repos", home.join("source/repos")),
+  ];
+
+  #[cfg(not(target_os = "windows"))]
   let candidates = [
     ("Documents dev", home.join("Documents/dev")),
     ("Documents _dev", home.join("Documents/_dev")),
@@ -150,8 +159,8 @@ pub fn maybe_seed_default_roots(store: &mut AppStore) {
     })
     .collect();
 
-  created_roots.sort_by(|left, right| left.path.cmp(&right.path));
-  created_roots.dedup_by(|left, right| left.path == right.path);
+  created_roots.sort_by(|left, right| comparable_path(&left.path).cmp(&comparable_path(&right.path)));
+  created_roots.dedup_by(|left, right| comparable_path(&left.path) == comparable_path(&right.path));
 
   store.roots = created_roots;
 }

@@ -217,19 +217,17 @@ fn open_terminal_macos(path: &str, command: Option<&str>, language: &str) -> Res
 
 #[cfg(target_os = "windows")]
 fn open_terminal_windows(path: &str, command: Option<&str>, language: &str) -> Result<String, String> {
-  if command_exists("wt") {
-    let mut process = Command::new("wt");
-    process.arg("-d").arg(path);
-    if let Some(command) = command {
-      process.arg("powershell").arg("-NoExit").arg("-Command").arg(command);
-    }
-    spawn(&mut process)?;
-    return Ok(message(language, "Opened in Windows Terminal.", "Abierto en Windows Terminal."));
-  }
-
   let inline = command
     .map(|value| format!("Set-Location -LiteralPath '{}'; {}", path.replace('\'', "''"), value))
     .unwrap_or_else(|| format!("Set-Location -LiteralPath '{}'", path.replace('\'', "''")));
+
+  if command_exists("wt") {
+    let mut process = Command::new("wt");
+    process.arg("-d").arg(path);
+    process.arg("powershell").arg("-NoExit").arg("-Command").arg(&inline);
+    spawn(&mut process)?;
+    return Ok(message(language, "Opened in Windows Terminal.", "Abierto en Windows Terminal."));
+  }
 
   spawn(
     Command::new("powershell")

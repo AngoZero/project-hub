@@ -1,5 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { detectPlatform, type AppPlatform } from './platform';
 import type {
   LanguagePreference,
   NavItem,
@@ -25,7 +26,7 @@ const MESSAGES = {
     topbarRoots: 'Root folders',
     topbarSettings: 'Settings',
     actionScan: 'Scan',
-    actionAddProject: 'Agregar proyecto',
+    actionAddProject: 'Add project',
     actionAddManually: 'Add manually',
     actionDismiss: 'Dismiss',
     actionClose: 'Close',
@@ -39,7 +40,7 @@ const MESSAGES = {
     actionOpenClaude: 'Open Claude here',
     actionOpenCodex: 'Open Codex here',
     actionOpenVsCode: 'Open VS Code',
-    actionOpenFinder: 'Finder',
+    actionOpenFileManager: '{manager}',
     actionCopyPath: 'Copy path',
     actionTerminal: 'Terminal',
     layoutGrid: 'Grid',
@@ -52,7 +53,7 @@ const MESSAGES = {
     filterAll: 'All',
     filterFavoritesOnly: 'Favorites only',
     workspaceAll: 'All',
-    statusSuccessImported: '{name} added from Finder.',
+    statusSuccessImported: '{name} added from {manager}.',
     statusSuccessExisting: '{name} is already registered.',
     statusErrorLoadStore: 'Unable to load Project Hub data.',
     statusErrorSaveProject: 'Unable to save project.',
@@ -93,7 +94,8 @@ const MESSAGES = {
     rootsConfigured: 'Configured roots',
     rootsEmpty: 'No roots configured yet. Add one to start scanning local projects.',
     rootsPath: 'Absolute path',
-    rootsPathPlaceholder: '/Users/you/Documents/dev',
+    rootsPathPlaceholderMac: '/Users/you/Documents/dev',
+    rootsPathPlaceholderWindows: 'C:\\Users\\you\\Documents\\dev',
     rootsLabel: 'Label',
     rootsLabelPlaceholder: 'Primary workspace',
     rootsDepth: 'Max depth',
@@ -185,7 +187,9 @@ const MESSAGES = {
     projectCardStack: 'Stack',
     projectCardLastAccess: 'Last access',
     projectCardNoDescription: 'No description yet.',
-    projectCardOpenFinderAria: 'Open {name} in Finder',
+    projectCardOpenFileManagerAria: 'Open {name} in {manager}',
+    fileManagerFinder: 'Finder',
+    fileManagerExplorer: 'Explorer',
     projectCardOpenVsCodeAria: 'Open {name} in VS Code',
     projectCardOpenTerminalAria: 'Open terminal in {name}',
     technologyUnclassified: 'Unclassified',
@@ -216,7 +220,7 @@ const MESSAGES = {
     topbarRoots: 'Carpetas raíz',
     topbarSettings: 'Ajustes',
     actionScan: 'Escanear',
-    actionAddProject: 'Add project',
+    actionAddProject: 'Agregar proyecto',
     actionAddManually: 'Agregar manualmente',
     actionDismiss: 'Cerrar',
     actionClose: 'Cerrar',
@@ -230,7 +234,7 @@ const MESSAGES = {
     actionOpenClaude: 'Abrir Claude aquí',
     actionOpenCodex: 'Abrir Codex aquí',
     actionOpenVsCode: 'Abrir VS Code',
-    actionOpenFinder: 'Finder',
+    actionOpenFileManager: '{manager}',
     actionCopyPath: 'Copiar ruta',
     actionTerminal: 'Terminal',
     layoutGrid: 'Grid',
@@ -243,7 +247,7 @@ const MESSAGES = {
     filterAll: 'Todos',
     filterFavoritesOnly: 'Solo favoritos',
     workspaceAll: 'Todos',
-    statusSuccessImported: '{name} se agregó desde Finder.',
+    statusSuccessImported: '{name} se agregó desde {manager}.',
     statusSuccessExisting: '{name} ya está registrado.',
     statusErrorLoadStore: 'No fue posible cargar los datos de Project Hub.',
     statusErrorSaveProject: 'No fue posible guardar el proyecto.',
@@ -284,7 +288,8 @@ const MESSAGES = {
     rootsConfigured: 'Raíces configuradas',
     rootsEmpty: 'Aún no hay raíces configuradas. Agrega una para empezar a escanear proyectos locales.',
     rootsPath: 'Ruta absoluta',
-    rootsPathPlaceholder: '/Users/you/Documents/dev',
+    rootsPathPlaceholderMac: '/Users/you/Documents/dev',
+    rootsPathPlaceholderWindows: 'C:\\Users\\you\\Documents\\dev',
     rootsLabel: 'Etiqueta',
     rootsLabelPlaceholder: 'Workspace principal',
     rootsDepth: 'Profundidad máxima',
@@ -376,7 +381,9 @@ const MESSAGES = {
     projectCardStack: 'Stack',
     projectCardLastAccess: 'Último acceso',
     projectCardNoDescription: 'Aún no hay descripción.',
-    projectCardOpenFinderAria: 'Abrir {name} en Finder',
+    projectCardOpenFileManagerAria: 'Abrir {name} en {manager}',
+    fileManagerFinder: 'Finder',
+    fileManagerExplorer: 'Explorer',
     projectCardOpenVsCodeAria: 'Abrir {name} en VS Code',
     projectCardOpenTerminalAria: 'Abrir terminal en {name}',
     technologyUnclassified: 'Sin clasificar',
@@ -406,6 +413,7 @@ export type TranslationKey = keyof (typeof MESSAGES)['en'];
 interface I18nContextValue {
   language: ResolvedLanguage;
   locale: string;
+  platform: AppPlatform;
   t: (key: TranslationKey, values?: TranslationValues) => string;
 }
 
@@ -487,6 +495,14 @@ export function getViewLabel(view: NavItem, t: I18nContextValue['t']): string {
   return t(labelByView[view]);
 }
 
+export function getFileManagerLabel(platform: AppPlatform, t: I18nContextValue['t']): string {
+  return platform === 'windows' ? t('fileManagerExplorer') : t('fileManagerFinder');
+}
+
+export function getRootsPathPlaceholder(platform: AppPlatform, t: I18nContextValue['t']): string {
+  return platform === 'windows' ? t('rootsPathPlaceholderWindows') : t('rootsPathPlaceholderMac');
+}
+
 export function I18nProvider({
   languagePreference,
   children,
@@ -496,14 +512,16 @@ export function I18nProvider({
 }) {
   const language = resolveLanguagePreference(languagePreference);
   const locale = getLocale(language);
+  const platform = detectPlatform();
 
   const value = useMemo<I18nContextValue>(() => {
     return {
       language,
       locale,
+      platform,
       t: (key, values) => translate(language, key, values),
     };
-  }, [language, locale]);
+  }, [language, locale, platform]);
 
   return <I18N_CONTEXT.Provider value={value}>{children}</I18N_CONTEXT.Provider>;
 }

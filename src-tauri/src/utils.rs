@@ -26,7 +26,32 @@ pub fn sanitize_list(items: &[String]) -> Vec<String> {
 }
 
 pub fn normalize_path(path: &str) -> String {
-  path.trim().trim_end_matches('/').to_string()
+  let trimmed = path.trim();
+
+  #[cfg(target_os = "windows")]
+  {
+    let normalized = trimmed.replace('/', "\\");
+    if is_windows_drive_root(&normalized) {
+      return normalized;
+    }
+
+    return normalized.trim_end_matches(['\\', '/']).to_string();
+  }
+
+  #[cfg(not(target_os = "windows"))]
+  trimmed.trim_end_matches('/').to_string()
+}
+
+pub fn comparable_path(path: &str) -> String {
+  let normalized = normalize_path(path);
+
+  #[cfg(target_os = "windows")]
+  {
+    return normalized.to_lowercase();
+  }
+
+  #[cfg(not(target_os = "windows"))]
+  normalized
 }
 
 pub fn is_absolute_path(path: &str) -> bool {
@@ -38,7 +63,7 @@ pub fn command_exists(command: &str) -> bool {
     return false;
   }
 
-  if command.contains('/') {
+  if command.contains('/') || command.contains('\\') {
     return Path::new(command).exists();
   }
 
@@ -74,4 +99,10 @@ pub fn shell_single_quote(value: &str) -> String {
 
 pub fn applescript_escape(value: &str) -> String {
   value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+#[cfg(target_os = "windows")]
+fn is_windows_drive_root(path: &str) -> bool {
+  let bytes = path.as_bytes();
+  bytes.len() == 3 && bytes[1] == b':' && bytes[2] == b'\\'
 }

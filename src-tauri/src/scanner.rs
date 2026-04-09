@@ -1,5 +1,5 @@
 use crate::types::{AppStore, ProjectGitInfo, ProjectRecord, ProjectUrl, RootFolder, SubProject, Workspace};
-use crate::utils::{make_id, now_iso, sanitize_list};
+use crate::utils::{comparable_path, make_id, now_iso, sanitize_list};
 use serde_json::Value;
 use std::{
   collections::HashMap,
@@ -26,14 +26,14 @@ pub fn scan_store(mut store: AppStore) -> AppStore {
     .projects
     .iter()
     .cloned()
-    .map(|project| (project.path.clone(), project))
+    .map(|project| (comparable_path(&project.path), project))
     .collect();
 
   let existing_workspaces: HashMap<String, Workspace> = store
     .workspaces
     .iter()
     .cloned()
-    .map(|ws| (ws.path.clone(), ws))
+    .map(|ws| (comparable_path(&ws.path), ws))
     .collect();
 
   let mut scanned_projects: Vec<ProjectRecord> = Vec::new();
@@ -49,7 +49,7 @@ pub fn scan_store(mut store: AppStore) -> AppStore {
   let mut merged_workspaces: Vec<Workspace> = scanned_workspaces
     .into_iter()
     .map(|ws| {
-      if let Some(existing) = existing_workspaces.get(&ws.path) {
+      if let Some(existing) = existing_workspaces.get(&comparable_path(&ws.path)) {
         Workspace {
           id: existing.id.clone(),
           name: ws.name,
@@ -61,12 +61,12 @@ pub fn scan_store(mut store: AppStore) -> AppStore {
     })
     .collect();
   merged_workspaces.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-  merged_workspaces.dedup_by(|a, b| a.path == b.path);
+  merged_workspaces.dedup_by(|a, b| comparable_path(&a.path) == comparable_path(&b.path));
 
   // Build workspace ID lookup for projects
   let workspace_id_by_path: HashMap<String, String> = merged_workspaces
     .iter()
-    .map(|ws| (ws.path.clone(), ws.id.clone()))
+    .map(|ws| (comparable_path(&ws.path), ws.id.clone()))
     .collect();
 
   // Resolve workspace IDs on scanned projects
@@ -75,7 +75,7 @@ pub fn scan_store(mut store: AppStore) -> AppStore {
     .map(|mut project| {
       if !project.workspace_id.is_empty() {
         // workspace_id is set to the workspace path during scanning, resolve to ID
-        if let Some(id) = workspace_id_by_path.get(&project.workspace_id) {
+        if let Some(id) = workspace_id_by_path.get(&comparable_path(&project.workspace_id)) {
           project.workspace_id = id.clone();
         }
       }
@@ -86,7 +86,7 @@ pub fn scan_store(mut store: AppStore) -> AppStore {
   // Merge projects
   let scanned_by_path: HashMap<String, ProjectRecord> = scanned_projects
     .into_iter()
-    .map(|project| (project.path.clone(), project))
+    .map(|project| (comparable_path(&project.path), project))
     .collect();
 
   let scanned_paths: Vec<String> = scanned_by_path.keys().cloned().collect();

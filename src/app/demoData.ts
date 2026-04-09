@@ -1,3 +1,4 @@
+import { getExampleProjectPath, type AppPlatform } from './platform';
 import type { AppStore, ProjectRecord, ProjectStatus, ProjectType, ResolvedLanguage } from './types';
 
 const now = new Date().toISOString();
@@ -80,12 +81,12 @@ function sampleProject(
   };
 }
 
-export function buildSampleProjects(language: ResolvedLanguage): ProjectRecord[] {
+export function buildSampleProjects(language: ResolvedLanguage, platform: AppPlatform): ProjectRecord[] {
   return [
     sampleProject(
       'sample-1',
       language === 'es' ? 'Dashboard de cliente' : 'Client Dashboard',
-      '/Users/you/Projects/client-dashboard',
+      getExampleProjectPath(platform, 'frontend'),
       'frontend',
       'active',
       ['React', 'TypeScript', 'Vite'],
@@ -97,7 +98,7 @@ export function buildSampleProjects(language: ResolvedLanguage): ProjectRecord[]
     sampleProject(
       'sample-2',
       language === 'es' ? 'API de operaciones' : 'Operations API',
-      '/Users/you/Projects/ops-api',
+      getExampleProjectPath(platform, 'backend'),
       'backend',
       'paused',
       ['Laravel', 'Docker'],

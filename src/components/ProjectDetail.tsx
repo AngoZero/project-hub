@@ -1,5 +1,5 @@
 import { Copy, ExternalLink, FolderOpen, PenSquare, Play, TerminalSquare, Trash2, X } from 'lucide-react';
-import { getProjectStatusLabel, getProjectTypeLabel, useI18n } from '../app/i18n';
+import { getFileManagerLabel, getProjectStatusLabel, getProjectTypeLabel, useI18n } from '../app/i18n';
 import type { ProjectRecord } from '../app/types';
 import { formatRelativeDate } from '../utils/formatters';
 import { BrandMark } from './BrandMark';
@@ -15,7 +15,8 @@ interface ProjectDetailProps {
 }
 
 export function ProjectDetail({ project, isModal = false, onClose, onEdit, onDelete, onAction }: ProjectDetailProps) {
-  const { language, t } = useI18n();
+  const { language, platform, t } = useI18n();
+  const fileManagerLabel = getFileManagerLabel(platform, t);
 
   if (!project) {
     return (
@@ -78,7 +79,7 @@ export function ProjectDetail({ project, isModal = false, onClose, onEdit, onDel
           </button>
           <button type="button" className="button button--ghost" onClick={() => onAction(project.id, 'openFinder')}>
             <FolderOpen size={16} />
-            {t('actionOpenFinder')}
+            {t('actionOpenFileManager', { manager: fileManagerLabel })}
           </button>
           <button
             type="button"

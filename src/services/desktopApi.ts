@@ -1,8 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import { detectPlatform } from '../app/platform';
 import { FALLBACK_STORE } from '../app/demoData';
 import type { ActionResult, AppStore, Preferences, ProjectRecord, RootFolder } from '../app/types';
-import { normalizePath } from '../utils/paths';
+import { getComparablePath, getPathLeafName, normalizePath } from '../utils/paths';
 
 const STORAGE_KEY = 'project-hub-browser-store';
 
@@ -95,19 +96,25 @@ export async function scanProjects(): Promise<AppStore> {
 export async function saveProject(project: ProjectRecord): Promise<AppStore> {
   if (!isTauriRuntime()) {
     const store = loadBrowserStore();
-    const normalizedProjectPath = normalizePath(project.path);
-    const duplicateProject = store.projects.find((item) => normalizePath(item.path) === normalizedProjectPath && item.id !== project.id);
+    const platform = detectPlatform();
+    const normalizedProjectPath = normalizePath(project.path, platform);
+    const comparableProjectPath = getComparablePath(project.path, platform);
+    const duplicateProject = store.projects.find((item) => getComparablePath(item.path, platform) === comparableProjectPath && item.id !== project.id);
 
     if (duplicateProject) {
       throw new Error('DUPLICATE_PROJECT_PATH');
     }
 
+    const nextProject = {
+      ...project,
+      path: normalizedProjectPath,
+    };
     const existingIndex = store.projects.findIndex((item) => item.id === project.id);
 
     if (existingIndex >= 0) {
-      store.projects[existingIndex] = project;
+      store.projects[existingIndex] = nextProject;
     } else {
-      store.projects.unshift(project);
+      store.projects.unshift(nextProject);
     }
 
     return saveBrowserStore(store);
@@ -119,7 +126,7 @@ export async function saveProject(project: ProjectRecord): Promise<AppStore> {
 export async function pickProjectFolder(): Promise<string | null> {
   if (!isTauriRuntime()) {
     const value = window.prompt('Absolute project folder path');
-    return value ? normalizePath(value) : null;
+    return value ? normalizePath(value, detectPlatform()) : null;
   }
 
   const selected = await open({
@@ -127,13 +134,14 @@ export async function pickProjectFolder(): Promise<string | null> {
     multiple: false,
   });
 
-  return typeof selected === 'string' ? normalizePath(selected) : null;
+  return typeof selected === 'string' ? normalizePath(selected, detectPlatform()) : null;
 }
 
 export async function inspectProjectPath(path: string): Promise<ProjectRecord> {
   if (!isTauriRuntime()) {
-    const normalizedPath = normalizePath(path);
-    const name = normalizedPath.split('/').filter(Boolean).at(-1) ?? 'project';
+    const platform = detectPlatform();
+    const normalizedPath = normalizePath(path, platform);
+    const name = getPathLeafName(normalizedPath, platform);
     const now = new Date().toISOString();
 
     return {
@@ -191,12 +199,17 @@ export async function deleteProject(projectId: string): Promise<AppStore> {
 export async function saveRootFolder(root: RootFolder): Promise<AppStore> {
   if (!isTauriRuntime()) {
     const store = loadBrowserStore();
+    const platform = detectPlatform();
+    const normalizedRoot = {
+      ...root,
+      path: normalizePath(root.path, platform),
+    };
     const existingIndex = store.roots.findIndex((item) => item.id === root.id);
 
     if (existingIndex >= 0) {
-      store.roots[existingIndex] = root;
+      store.roots[existingIndex] = normalizedRoot;
     } else {
-      store.roots.unshift(root);
+      store.roots.unshift(normalizedRoot);
     }
 
     return saveBrowserStore(store);

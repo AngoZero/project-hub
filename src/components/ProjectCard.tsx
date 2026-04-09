@@ -1,6 +1,6 @@
 import { Folder, Star, TerminalSquare } from 'lucide-react';
 import clsx from 'clsx';
-import { getProjectStatusLabel, getProjectTypeLabel, useI18n } from '../app/i18n';
+import { getFileManagerLabel, getProjectStatusLabel, getProjectTypeLabel, useI18n } from '../app/i18n';
 import type { ProjectRecord } from '../app/types';
 import { formatRelativeDate } from '../utils/formatters';
 import { BrandMark } from './BrandMark';
@@ -14,8 +14,9 @@ interface ProjectCardProps {
 }
 
 export function ProjectCard({ project, isSelected, onSelect, onAction }: ProjectCardProps) {
-  const { language, t } = useI18n();
+  const { language, platform, t } = useI18n();
   const description = project.description || t('projectCardNoDescription');
+  const fileManagerLabel = getFileManagerLabel(platform, t);
 
   return (
     <article
@@ -47,7 +48,7 @@ export function ProjectCard({ project, isSelected, onSelect, onAction }: Project
 
             <div className="project-card__corner">
               <div className="project-card__actions">
-                <button type="button" onClick={(event) => { event.stopPropagation(); onAction(project.id, 'openFinder'); }} aria-label={t('projectCardOpenFinderAria', { name: project.name })}>
+                <button type="button" onClick={(event) => { event.stopPropagation(); onAction(project.id, 'openFinder'); }} aria-label={t('projectCardOpenFileManagerAria', { name: project.name, manager: fileManagerLabel })}>
                   <Folder size={16} />
                 </button>
                 <button type="button" onClick={(event) => { event.stopPropagation(); onAction(project.id, 'openCode'); }} aria-label={t('projectCardOpenVsCodeAria', { name: project.name })}>
