@@ -87,7 +87,7 @@ export interface RootFolderPreview {
 
 export interface ProjectRecord {
   id: string;
-  source: 'manual' | 'scanned' | 'sample';
+  source: 'manual' | 'scanned';
   name: string;
   path: string;
   description: string;

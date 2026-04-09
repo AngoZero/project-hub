@@ -478,6 +478,10 @@ button:focus-visible {
   gap: 1rem;
 }
 
+.catalog-empty {
+  padding: 1.5rem;
+}
+
 .project-card {
   padding: 1.1rem;
   transition: transform 0.15s ease, box-shadow 0.15s ease;

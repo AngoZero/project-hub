@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { buildSampleProjects, FALLBACK_STORE } from '../app/demoData';
+import { DEFAULT_APP_STORE } from '../app/defaultStore';
 import { resolveLanguagePreference, translate, type TranslationKey } from '../app/i18n';
-import { detectPlatform } from '../app/platform';
 import type { ActionResult, AppStore, CatalogFilters, NavItem, Preferences, ProjectRecord, RootFolder } from '../app/types';
 import { deleteProject, deleteRootFolder, loadAppStore, runProjectAction, savePreferences, saveProject, saveRootFolder, scanProjects } from '../services/desktopApi';
 import { filterProjects, sortProjects } from '../utils/projectFilters';
@@ -38,7 +37,7 @@ function getErrorMessage(
 }
 
 export function useProjectHub() {
-  const [store, setStore] = useState<AppStore>(FALLBACK_STORE);
+  const [store, setStore] = useState<AppStore>(DEFAULT_APP_STORE);
   const [currentView, setCurrentView] = useState<NavItem>('catalog');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [filters, setFilters] = useState<CatalogFilters>(INITIAL_FILTERS);
@@ -105,11 +104,6 @@ export function useProjectHub() {
   const selectedProject = useMemo(
     () => visibleProjects.find((project) => project.id === selectedProjectId) ?? store.projects.find((project) => project.id === selectedProjectId) ?? null,
     [selectedProjectId, store.projects, visibleProjects],
-  );
-
-  const sampleProjects = useMemo(
-    () => (store.projects.length === 0 && !requiresOnboarding ? buildSampleProjects(resolvedLanguage, detectPlatform()) : []),
-    [requiresOnboarding, resolvedLanguage, store.projects.length],
   );
 
   const workspaces = useMemo(() => store.workspaces ?? [], [store.workspaces]);
@@ -288,7 +282,6 @@ export function useProjectHub() {
     filters,
     setFilters,
     visibleProjects,
-    sampleProjects,
     workspaces,
     activeWorkspace: filters.workspace,
     setActiveWorkspace,

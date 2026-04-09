@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import { DEFAULT_APP_STORE } from '../app/defaultStore';
 import { detectPlatform } from '../app/platform';
-import { FALLBACK_STORE } from '../app/demoData';
 import type { ActionResult, AppStore, Preferences, ProjectRecord, RootChildRule, RootFolder, RootFolderPreview } from '../app/types';
 import { getComparablePath, getPathLeafName, normalizePath } from '../utils/paths';
 
@@ -26,7 +26,11 @@ function isTauriRuntime(): boolean {
   return typeof window !== 'undefined' && typeof window.__TAURI_INTERNALS__ !== 'undefined';
 }
 
-function cloneStore(store: AppStore): AppStore {
+function normalizeProjectSource(source: string): ProjectRecord['source'] {
+  return source === 'scanned' ? 'scanned' : 'manual';
+}
+
+function normalizeStore(store: AppStore): AppStore {
   const normalizedPreferences: Preferences = {
     ...store.preferences,
     language: store.preferences.language ?? 'system',
@@ -44,6 +48,7 @@ function cloneStore(store: AppStore): AppStore {
     })),
     projects: store.projects.map((project) => ({
       ...project,
+      source: normalizeProjectSource(project.source),
       tags: [...project.tags],
       stack: [...project.stack],
       detectedStack: [...project.detectedStack],
@@ -60,21 +65,21 @@ function cloneStore(store: AppStore): AppStore {
 function loadBrowserStore(): AppStore {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(FALLBACK_STORE));
-    return cloneStore(FALLBACK_STORE);
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_APP_STORE));
+    return normalizeStore(DEFAULT_APP_STORE);
   }
 
   try {
-    return cloneStore(JSON.parse(raw) as AppStore);
+    return normalizeStore(JSON.parse(raw) as AppStore);
   } catch {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(FALLBACK_STORE));
-    return cloneStore(FALLBACK_STORE);
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_APP_STORE));
+    return normalizeStore(DEFAULT_APP_STORE);
   }
 }
 
 function saveBrowserStore(store: AppStore): AppStore {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
-  return cloneStore(store);
+  return normalizeStore(store);
 }
 
 async function fallbackAction(message: string): Promise<ActionResult> {
@@ -89,7 +94,7 @@ export async function loadAppStore(): Promise<AppStore> {
     return loadBrowserStore();
   }
 
-  return invoke<AppStore>('load_app_state');
+  return normalizeStore(await invoke<AppStore>('load_app_state'));
 }
 
 export async function scanProjects(): Promise<AppStore> {
@@ -97,7 +102,7 @@ export async function scanProjects(): Promise<AppStore> {
     return loadBrowserStore();
   }
 
-  return invoke<AppStore>('scan_projects');
+  return normalizeStore(await invoke<AppStore>('scan_projects'));
 }
 
 export async function saveProject(project: ProjectRecord): Promise<AppStore> {
@@ -127,7 +132,7 @@ export async function saveProject(project: ProjectRecord): Promise<AppStore> {
     return saveBrowserStore(store);
   }
 
-  return invoke<AppStore>('save_project', { project });
+  return normalizeStore(await invoke<AppStore>('save_project', { project }));
 }
 
 export async function pickProjectFolder(): Promise<string | null> {
@@ -235,7 +240,7 @@ export async function deleteProject(projectId: string): Promise<AppStore> {
     });
   }
 
-  return invoke<AppStore>('delete_project', { projectId });
+  return normalizeStore(await invoke<AppStore>('delete_project', { projectId }));
 }
 
 export async function saveRootFolder(root: RootFolder): Promise<AppStore> {
@@ -261,7 +266,7 @@ export async function saveRootFolder(root: RootFolder): Promise<AppStore> {
     return saveBrowserStore(store);
   }
 
-  return invoke<AppStore>('save_root_folder', { root });
+  return normalizeStore(await invoke<AppStore>('save_root_folder', { root }));
 }
 
 export async function deleteRootFolder(rootId: string): Promise<AppStore> {
@@ -273,7 +278,7 @@ export async function deleteRootFolder(rootId: string): Promise<AppStore> {
     });
   }
 
-  return invoke<AppStore>('delete_root_folder', { rootId });
+  return normalizeStore(await invoke<AppStore>('delete_root_folder', { rootId }));
 }
 
 export async function savePreferences(preferences: Preferences): Promise<AppStore> {
@@ -285,7 +290,7 @@ export async function savePreferences(preferences: Preferences): Promise<AppStor
     });
   }
 
-  return invoke<AppStore>('save_preferences', { preferences });
+  return normalizeStore(await invoke<AppStore>('save_preferences', { preferences }));
 }
 
 export async function runProjectAction(projectId: string, action: ProjectActionPayload): Promise<ActionResult> {

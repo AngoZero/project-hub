@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, RefreshCcw, Search, SlidersHorizontal, X } from 'lucide-react';
 import { I18nProvider, getFileManagerLabel, getProjectStatusLabel, getProjectTypeLabel, getViewLabel, useI18n } from './app/i18n';
 import { PROJECT_STATUSES, PROJECT_TYPES, type ProjectRecord, type RootFolder, type RootFolderPreview } from './app/types';
@@ -27,11 +27,6 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
   const [reviewRoot, setReviewRoot] = useState<RootFolder | null>(null);
   const [reviewPreview, setReviewPreview] = useState<RootFolderPreview | null>(null);
   const [isStructureModalOpen, setStructureModalOpen] = useState(false);
-
-  const catalogProjects = useMemo(
-    () => (hub.visibleProjects.length > 0 ? hub.visibleProjects : hub.sampleProjects),
-    [hub.sampleProjects, hub.visibleProjects],
-  );
 
   function openManualProject(): void {
     setEditingProject(null);
@@ -414,21 +409,26 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
               </div>
             </section>
 
-            {hub.store.preferences.catalogLayout === 'grid' ? (
-              <div className="project-grid">
-                {catalogProjects.map((project) => (
-                  <ProjectCard
-                    key={project.id}
-                    project={project}
-                    isSelected={isProjectDetailOpen && project.id === hub.selectedProjectId}
-                    onSelect={handleSelectProject}
-                    onAction={(projectId, kind) => void hub.executeProjectAction(projectId, kind)}
-                  />
-                ))}
-              </div>
+            {hub.visibleProjects.length === 0 ? (
+              <article className="surface-card catalog-empty" aria-live="polite">
+                <h3>{t('catalogEmptyTitle')}</h3>
+                <p className="muted-copy">{t('catalogEmptyCopy')}</p>
+              </article>
+            ) : hub.store.preferences.catalogLayout === 'grid' ? (
+                <div className="project-grid">
+                  {hub.visibleProjects.map((project) => (
+                    <ProjectCard
+                      key={project.id}
+                      project={project}
+                      isSelected={isProjectDetailOpen && project.id === hub.selectedProjectId}
+                      onSelect={handleSelectProject}
+                      onAction={(projectId, kind) => void hub.executeProjectAction(projectId, kind)}
+                    />
+                  ))}
+                </div>
             ) : (
               <ProjectTable
-                projects={catalogProjects}
+                projects={hub.visibleProjects}
                 selectedProjectId={isProjectDetailOpen ? hub.selectedProjectId : null}
                 onSelect={handleSelectProject}
               />
