@@ -76,13 +76,14 @@ npx tauri build --debug --bundles msi
 ## Notes
 
 - Persistence lives in the local app data directory under `project-hub/state.json`.
-- On first launch, the app tries to seed common roots if they exist.
-- macOS defaults:
+- On first launch, the app requires choosing a main root folder before entering the catalog.
+- The first root scan includes a structure review step so top-level folders can be classified as workspaces, projects, or ignored.
+- Common macOS root examples:
   - `~/Documents/dev`
   - `~/Documents/_dev`
   - `~/Projects`
   - `~/Desktop/clientes`
-- Windows defaults:
+- Common Windows root examples:
   - `~/Documents/dev`
   - `~/Documents/_dev`
   - `~/Projects`

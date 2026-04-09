@@ -57,6 +57,8 @@ export function useProjectHub() {
     [store.preferences.language],
   );
 
+  const requiresOnboarding = !store.preferences.hasCompletedOnboarding && store.roots.length === 0 && store.projects.length === 0;
+
   useEffect(() => {
     let isActive = true;
 
@@ -106,8 +108,8 @@ export function useProjectHub() {
   );
 
   const sampleProjects = useMemo(
-    () => (store.projects.length === 0 ? buildSampleProjects(resolvedLanguage, detectPlatform()) : []),
-    [resolvedLanguage, store.projects.length],
+    () => (store.projects.length === 0 && !requiresOnboarding ? buildSampleProjects(resolvedLanguage, detectPlatform()) : []),
+    [requiresOnboarding, resolvedLanguage, store.projects.length],
   );
 
   const workspaces = useMemo(() => store.workspaces ?? [], [store.workspaces]);
@@ -216,6 +218,31 @@ export function useProjectHub() {
     }
   }
 
+  async function completeOnboarding(root: RootFolder): Promise<void> {
+    setIsSaving(true);
+    try {
+      const rootStore = await saveRootFolder(root);
+      const nextStore = await savePreferences({
+        ...rootStore.preferences,
+        hasCompletedOnboarding: true,
+      });
+      setStore(nextStore);
+      setCurrentView('catalog');
+      setSelectedProjectId(nextStore.projects[0]?.id ?? null);
+      setStatusMessage({
+        ok: true,
+        message: translate(resolvedLanguage, 'statusSuccessOnboardingComplete', {
+          name: root.label || root.path,
+        }),
+      });
+    } catch (error) {
+      setStatusMessage({ ok: false, message: getErrorMessage(resolvedLanguage, error, 'statusErrorOnboarding') });
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   async function refreshScan(): Promise<void> {
     setIsSaving(true);
     try {
@@ -281,5 +308,7 @@ export function useProjectHub() {
     refreshScan,
     executeProjectAction,
     resolvedLanguage,
+    requiresOnboarding,
+    completeOnboarding,
   };
 }

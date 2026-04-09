@@ -7,6 +7,7 @@ import type {
   ProjectStatus,
   ProjectType,
   ResolvedLanguage,
+  RootChildKind,
   SortOption,
 } from './types';
 
@@ -72,6 +73,9 @@ const MESSAGES = {
     statusErrorImportProject: 'Unable to add the selected folder as a project.',
     statusErrorDuplicatePath: 'A project with this folder already exists.',
     statusErrorDesktopOnly: 'This action is available only inside the Tauri desktop runtime.',
+    statusSuccessOnboardingComplete: '{name} is ready. Initial scan completed.',
+    statusErrorOnboarding: 'Unable to finish the initial setup.',
+    statusErrorPreviewRoot: 'Unable to inspect the selected root folder.',
     sidebarDashboard: 'Dashboard',
     sidebarProjects: 'Projects',
     sidebarRoots: 'Roots',
@@ -91,6 +95,7 @@ const MESSAGES = {
     rootsEyebrow: 'Root folder registry',
     rootsTitle: 'Scan local project directories',
     rootsAdd: 'Add root folder',
+    rootsReviewStructure: 'Review structure',
     rootsConfigured: 'Configured roots',
     rootsEmpty: 'No roots configured yet. Add one to start scanning local projects.',
     rootsPath: 'Absolute path',
@@ -100,6 +105,28 @@ const MESSAGES = {
     rootsLabelPlaceholder: 'Primary workspace',
     rootsDepth: 'Max depth',
     rootsDepthValue: 'Depth {value}',
+    rootsReviewTitle: 'Review root structure',
+    rootsReviewCopy: 'Adjust which direct children should behave as workspaces, projects, or ignored folders.',
+    rootsReviewEmpty: 'No visible child folders were found in this root.',
+    onboardingEyebrow: 'First-time setup',
+    onboardingTitle: 'Choose the main folder where your projects live.',
+    onboardingCopy: 'Project Hub will inspect the direct children, suggest workspaces automatically, and let you fix ambiguous cases before the first scan.',
+    onboardingSelectTitle: 'Step 1 · Choose your main root',
+    onboardingSelectCopy: 'Pick the parent directory that contains your active projects. You can add more roots later.',
+    onboardingReviewTitle: 'Step 2 · Review the detected structure',
+    onboardingReviewCopy: 'Confirm how each top-level folder should behave before the first scan runs.',
+    onboardingPickRoot: 'Choose root folder',
+    onboardingChangeRoot: 'Choose another folder',
+    onboardingConfirm: 'Start with this root',
+    onboardingSelectedRoot: 'Selected root',
+    onboardingSuggestedLabel: 'Suggested label',
+    onboardingReady: 'Ready to scan',
+    rootChildSuggested: 'Suggested: {value}',
+    rootChildMarkers: 'Markers: {value}',
+    rootChildDescendants: '{value} detected project folders',
+    rootKindWorkspace: 'Workspace',
+    rootKindProject: 'Project',
+    rootKindIgnored: 'Ignored',
     settingsEyebrow: 'Local preferences',
     settingsTitle: 'Desktop defaults',
     settingsTheme: 'Theme',
@@ -266,6 +293,9 @@ const MESSAGES = {
     statusErrorImportProject: 'No fue posible agregar la carpeta seleccionada como proyecto.',
     statusErrorDuplicatePath: 'Ya existe un proyecto con esa carpeta.',
     statusErrorDesktopOnly: 'Esta acción solo está disponible dentro del runtime de Tauri.',
+    statusSuccessOnboardingComplete: '{name} quedó listo. El primer escaneo se completó.',
+    statusErrorOnboarding: 'No fue posible terminar la configuración inicial.',
+    statusErrorPreviewRoot: 'No fue posible revisar la carpeta raíz seleccionada.',
     sidebarDashboard: 'Dashboard',
     sidebarProjects: 'Proyectos',
     sidebarRoots: 'Raíces',
@@ -285,6 +315,7 @@ const MESSAGES = {
     rootsEyebrow: 'Registro de carpetas raíz',
     rootsTitle: 'Escanea directorios locales de proyectos',
     rootsAdd: 'Agregar carpeta raíz',
+    rootsReviewStructure: 'Revisar estructura',
     rootsConfigured: 'Raíces configuradas',
     rootsEmpty: 'Aún no hay raíces configuradas. Agrega una para empezar a escanear proyectos locales.',
     rootsPath: 'Ruta absoluta',
@@ -294,6 +325,28 @@ const MESSAGES = {
     rootsLabelPlaceholder: 'Workspace principal',
     rootsDepth: 'Profundidad máxima',
     rootsDepthValue: 'Profundidad {value}',
+    rootsReviewTitle: 'Revisar estructura de la raíz',
+    rootsReviewCopy: 'Ajusta qué hijos directos deben comportarse como workspaces, proyectos o carpetas ignoradas.',
+    rootsReviewEmpty: 'No se encontraron carpetas hijas visibles en esta raíz.',
+    onboardingEyebrow: 'Configuración inicial',
+    onboardingTitle: 'Elige la carpeta principal donde viven tus proyectos.',
+    onboardingCopy: 'Project Hub revisará los hijos directos, sugerirá workspaces automáticamente y te dejará corregir los casos ambiguos antes del primer escaneo.',
+    onboardingSelectTitle: 'Paso 1 · Elige tu raíz principal',
+    onboardingSelectCopy: 'Selecciona el directorio padre que contiene tus proyectos activos. Después podrás agregar más raíces.',
+    onboardingReviewTitle: 'Paso 2 · Revisa la estructura detectada',
+    onboardingReviewCopy: 'Confirma cómo debe comportarse cada carpeta de primer nivel antes de correr el primer escaneo.',
+    onboardingPickRoot: 'Elegir carpeta raíz',
+    onboardingChangeRoot: 'Elegir otra carpeta',
+    onboardingConfirm: 'Iniciar con esta raíz',
+    onboardingSelectedRoot: 'Raíz seleccionada',
+    onboardingSuggestedLabel: 'Etiqueta sugerida',
+    onboardingReady: 'Listo para escanear',
+    rootChildSuggested: 'Sugerido: {value}',
+    rootChildMarkers: 'Marcadores: {value}',
+    rootChildDescendants: '{value} carpetas de proyecto detectadas',
+    rootKindWorkspace: 'Workspace',
+    rootKindProject: 'Proyecto',
+    rootKindIgnored: 'Ignorado',
     settingsEyebrow: 'Preferencias locales',
     settingsTitle: 'Defaults de escritorio',
     settingsTheme: 'Tema',
@@ -497,6 +550,16 @@ export function getViewLabel(view: NavItem, t: I18nContextValue['t']): string {
 
 export function getFileManagerLabel(platform: AppPlatform, t: I18nContextValue['t']): string {
   return platform === 'windows' ? t('fileManagerExplorer') : t('fileManagerFinder');
+}
+
+export function getRootChildKindLabel(kind: RootChildKind, t: I18nContextValue['t']): string {
+  const labelByKind: Record<RootChildKind, TranslationKey> = {
+    workspace: 'rootKindWorkspace',
+    project: 'rootKindProject',
+    ignored: 'rootKindIgnored',
+  };
+
+  return t(labelByKind[kind]);
 }
 
 export function getRootsPathPlaceholder(platform: AppPlatform, t: I18nContextValue['t']): string {

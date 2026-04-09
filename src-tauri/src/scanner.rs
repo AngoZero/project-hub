@@ -1,8 +1,11 @@
-use crate::types::{AppStore, ProjectGitInfo, ProjectRecord, ProjectUrl, RootFolder, SubProject, Workspace};
-use crate::utils::{comparable_path, make_id, now_iso, sanitize_list};
+use crate::types::{
+  AppStore, ProjectGitInfo, ProjectRecord, ProjectUrl, RootChildPreview, RootChildRule, RootFolder, RootFolderPreview,
+  SubProject, Workspace,
+};
+use crate::utils::{comparable_path, make_id, normalize_path, now_iso, sanitize_list};
 use serde_json::Value;
 use std::{
-  collections::HashMap,
+  collections::{HashMap, HashSet},
   fs,
   path::{Path, PathBuf},
 };
@@ -20,7 +23,10 @@ const IGNORED_DIRECTORIES: &[&str] = &[
   ".vscode",
 ];
 
-/// Hierarchical scan: Root → Workspace → Project → SubProject
+const ROOT_KIND_WORKSPACE: &str = "workspace";
+const ROOT_KIND_PROJECT: &str = "project";
+const ROOT_KIND_IGNORED: &str = "ignored";
+
 pub fn scan_store(mut store: AppStore) -> AppStore {
   let existing_by_path: HashMap<String, ProjectRecord> = store
     .projects
@@ -33,7 +39,7 @@ pub fn scan_store(mut store: AppStore) -> AppStore {
     .workspaces
     .iter()
     .cloned()
-    .map(|ws| (comparable_path(&ws.path), ws))
+    .map(|workspace| (comparable_path(&workspace.path), workspace))
     .collect();
 
   let mut scanned_projects: Vec<ProjectRecord> = Vec::new();
@@ -45,36 +51,32 @@ pub fn scan_store(mut store: AppStore) -> AppStore {
     scanned_projects.extend(projects);
   }
 
-  // Merge workspaces: preserve existing IDs
   let mut merged_workspaces: Vec<Workspace> = scanned_workspaces
     .into_iter()
-    .map(|ws| {
-      if let Some(existing) = existing_workspaces.get(&comparable_path(&ws.path)) {
+    .map(|workspace| {
+      if let Some(existing) = existing_workspaces.get(&comparable_path(&workspace.path)) {
         Workspace {
           id: existing.id.clone(),
-          name: ws.name,
-          path: ws.path,
+          name: workspace.name,
+          path: workspace.path,
         }
       } else {
-        ws
+        workspace
       }
     })
     .collect();
-  merged_workspaces.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-  merged_workspaces.dedup_by(|a, b| comparable_path(&a.path) == comparable_path(&b.path));
+  merged_workspaces.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+  merged_workspaces.dedup_by(|left, right| comparable_path(&left.path) == comparable_path(&right.path));
 
-  // Build workspace ID lookup for projects
   let workspace_id_by_path: HashMap<String, String> = merged_workspaces
     .iter()
-    .map(|ws| (comparable_path(&ws.path), ws.id.clone()))
+    .map(|workspace| (comparable_path(&workspace.path), workspace.id.clone()))
     .collect();
 
-  // Resolve workspace IDs on scanned projects
   let scanned_projects: Vec<ProjectRecord> = scanned_projects
     .into_iter()
     .map(|mut project| {
       if !project.workspace_id.is_empty() {
-        // workspace_id is set to the workspace path during scanning, resolve to ID
         if let Some(id) = workspace_id_by_path.get(&comparable_path(&project.workspace_id)) {
           project.workspace_id = id.clone();
         }
@@ -83,33 +85,75 @@ pub fn scan_store(mut store: AppStore) -> AppStore {
     })
     .collect();
 
-  // Merge projects
   let scanned_by_path: HashMap<String, ProjectRecord> = scanned_projects
     .into_iter()
     .map(|project| (comparable_path(&project.path), project))
     .collect();
 
-  let scanned_paths: Vec<String> = scanned_by_path.keys().cloned().collect();
+  let scanned_paths: HashSet<String> = scanned_by_path.keys().cloned().collect();
   let mut merged_projects: Vec<ProjectRecord> = scanned_by_path
     .into_values()
     .map(|project| {
       existing_by_path
-        .get(&project.path)
+        .get(&comparable_path(&project.path))
         .map(|existing| merge_scanned_project(existing, project.clone()))
         .unwrap_or(project)
     })
     .collect();
 
-  merged_projects.extend(
-    existing_by_path
-      .into_values()
-      .filter(|project| project.source == "manual" && !scanned_paths.contains(&project.path)),
-  );
+  merged_projects.extend(existing_by_path.into_values().filter(|project| {
+    project.source == "manual" && !scanned_paths.contains(&comparable_path(&project.path))
+  }));
 
   merged_projects.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
   store.projects = merged_projects;
   store.workspaces = merged_workspaces;
   store
+}
+
+pub fn preview_root_folder(path: &Path, child_rules: &[RootChildRule]) -> Result<RootFolderPreview, String> {
+  if !path.exists() {
+    return Err("Selected folder does not exist.".into());
+  }
+
+  if !path.is_dir() {
+    return Err("Selected path is not a folder.".into());
+  }
+
+  let child_rule_by_path: HashMap<String, String> = child_rules
+    .iter()
+    .map(|rule| (comparable_path(&rule.path), rule.kind.clone()))
+    .collect();
+
+  let mut children: Vec<RootChildPreview> = list_visible_child_directories(path)?
+    .into_iter()
+    .map(|child| {
+      let child_entries = read_directory_entries(&child);
+      let normalized_path = normalize_path(&child.to_string_lossy());
+      let suggested_kind = suggest_root_child_kind(&child, &child_entries);
+      let current_kind = child_rule_by_path
+        .get(&comparable_path(&normalized_path))
+        .cloned()
+        .unwrap_or_else(|| suggested_kind.clone());
+
+      RootChildPreview {
+        name: get_path_name(&child, "Unnamed folder"),
+        path: normalized_path,
+        markers: collect_markers(&child, &child_entries),
+        suggested_kind,
+        current_kind,
+        descendant_project_count: count_project_like_children(&child_entries),
+      }
+    })
+    .collect();
+
+  children.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+
+  Ok(RootFolderPreview {
+    path: normalize_path(&path.to_string_lossy()),
+    suggested_label: get_path_name(path, "Main root"),
+    children,
+  })
 }
 
 pub fn inspect_project_path(path: &Path) -> Result<ProjectRecord, String> {
@@ -121,25 +165,8 @@ pub fn inspect_project_path(path: &Path) -> Result<ProjectRecord, String> {
     return Err("Selected path is not a folder.".into());
   }
 
-  let entries: Vec<PathBuf> = fs::read_dir(path)
-    .map_err(|error| error.to_string())?
-    .filter_map(Result::ok)
-    .map(|entry| entry.path())
-    .collect();
-
-  let mut project = if looks_like_project(path, &entries) {
-    build_project(path, &entries)
-  } else {
-    let subs = scan_sub_projects(path);
-    if !subs.is_empty() {
-      let mut project = build_umbrella_project(path, &subs);
-      project.sub_projects = subs;
-      project
-    } else {
-      build_manual_project(path)
-    }
-  };
-
+  let entries = read_directory_entries(path);
+  let mut project = build_project_or_umbrella(path, &entries);
   project.source = "manual".into();
   Ok(project)
 }
@@ -202,128 +229,97 @@ fn merge_scanned_project(existing: &ProjectRecord, scanned: ProjectRecord) -> Pr
   }
 }
 
-/// Scan a root folder hierarchically: children are workspaces, grandchildren are projects
 fn scan_root_hierarchical(root: &RootFolder) -> (Vec<Workspace>, Vec<ProjectRecord>) {
   let root_path = PathBuf::from(&root.path);
   if !root_path.exists() {
     return (Vec::new(), Vec::new());
   }
 
-  let Ok(entries) = fs::read_dir(&root_path) else {
+  let Ok(children) = list_visible_child_directories(&root_path) else {
     return (Vec::new(), Vec::new());
   };
 
-  let children: Vec<PathBuf> = entries
-    .filter_map(Result::ok)
-    .map(|e| e.path())
-    .filter(|p| p.is_dir())
+  let child_rule_by_path: HashMap<String, String> = root
+    .child_rules
+    .iter()
+    .map(|rule| (comparable_path(&rule.path), rule.kind.clone()))
     .collect();
 
   let mut workspaces = Vec::new();
   let mut projects = Vec::new();
 
   for child in &children {
-    let Some(name) = child.file_name().and_then(|v| v.to_str()) else {
-      continue;
-    };
+    let child_entries = read_directory_entries(child);
+    let child_path = normalize_path(&child.to_string_lossy());
+    let child_kind = child_rule_by_path
+      .get(&comparable_path(&child_path))
+      .cloned()
+      .unwrap_or_else(|| suggest_root_child_kind(child, &child_entries));
 
-    if IGNORED_DIRECTORIES.contains(&name) || name.starts_with('.') {
-      continue;
-    }
-
-    let child_entries: Vec<PathBuf> = fs::read_dir(child)
-      .ok()
-      .map(|rd| rd.filter_map(Result::ok).map(|e| e.path()).collect())
-      .unwrap_or_default();
-
-    if looks_like_project(child, &child_entries) {
-      // This child is itself a project (directly in root, no workspace)
-      let mut project = build_project(child, &child_entries);
-      project.workspace_id = String::new();
-      project.sub_projects = scan_sub_projects(child);
-      projects.push(project);
-    } else {
-      // This child is a workspace — enumerate its children as projects
-      let workspace = Workspace {
-        id: make_id("ws"),
-        name: name.to_string(),
-        path: child.to_string_lossy().to_string(),
-      };
-
-      let ws_path = workspace.path.clone();
-
-      for grandchild in child_entries.iter().filter(|p| p.is_dir()) {
-        let Some(gc_name) = grandchild.file_name().and_then(|v| v.to_str()) else {
-          continue;
+    match child_kind.as_str() {
+      ROOT_KIND_WORKSPACE => {
+        let workspace = Workspace {
+          id: make_id("ws"),
+          name: get_path_name(child, "Unnamed workspace"),
+          path: child_path,
         };
 
-        if IGNORED_DIRECTORIES.contains(&gc_name) || gc_name.starts_with('.') {
-          continue;
-        }
+        let workspace_path = workspace.path.clone();
+        for grandchild in child_entries.iter().filter(|entry| entry.is_dir() && !should_ignore_directory(entry)) {
+          let grandchild_entries = read_directory_entries(grandchild);
 
-        let gc_entries: Vec<PathBuf> = fs::read_dir(grandchild)
-          .ok()
-          .map(|rd| rd.filter_map(Result::ok).map(|e| e.path()).collect())
-          .unwrap_or_default();
-
-        if looks_like_project(grandchild, &gc_entries) {
-          let mut project = build_project(grandchild, &gc_entries);
-          project.workspace_id = ws_path.clone();
-          project.sub_projects = scan_sub_projects(grandchild);
-          projects.push(project);
-        } else {
-          // Check if this is an umbrella folder containing sub-projects
-          let subs = scan_sub_projects(grandchild);
-          if !subs.is_empty() {
-            let mut project = build_umbrella_project(grandchild, &subs);
-            project.workspace_id = ws_path.clone();
-            project.sub_projects = subs;
+          if looks_like_project(grandchild, &grandchild_entries) || count_project_like_children(&grandchild_entries) > 0 {
+            let mut project = build_project_or_umbrella(grandchild, &grandchild_entries);
+            project.workspace_id = workspace_path.clone();
             projects.push(project);
           }
         }
-      }
 
-      workspaces.push(workspace);
+        workspaces.push(workspace);
+      }
+      ROOT_KIND_PROJECT => {
+        let mut project = build_project_or_umbrella(child, &child_entries);
+        project.workspace_id = String::new();
+        projects.push(project);
+      }
+      _ => {}
     }
   }
 
   (workspaces, projects)
 }
 
-/// Scan immediate subdirectories of a project for sub-projects
 fn scan_sub_projects(project_path: &Path) -> Vec<SubProject> {
-  let Ok(entries) = fs::read_dir(project_path) else {
+  let Ok(children) = list_visible_child_directories(project_path) else {
     return Vec::new();
   };
 
-  let children: Vec<PathBuf> = entries
-    .filter_map(Result::ok)
-    .map(|e| e.path())
-    .filter(|p| p.is_dir())
-    .collect();
-
-  let mut subs = Vec::new();
-
+  let mut sub_projects = Vec::new();
   for child in &children {
-    let Some(name) = child.file_name().and_then(|v| v.to_str()) else {
-      continue;
-    };
-
-    if IGNORED_DIRECTORIES.contains(&name) || name.starts_with('.') {
-      continue;
-    }
-
-    let child_entries: Vec<PathBuf> = fs::read_dir(child)
-      .ok()
-      .map(|rd| rd.filter_map(Result::ok).map(|e| e.path()).collect())
-      .unwrap_or_default();
-
+    let child_entries = read_directory_entries(child);
     if looks_like_project(child, &child_entries) {
-      subs.push(build_sub_project(child, &child_entries));
+      sub_projects.push(build_sub_project(child, &child_entries));
     }
   }
 
-  subs
+  sub_projects
+}
+
+fn build_project_or_umbrella(path: &Path, entries: &[PathBuf]) -> ProjectRecord {
+  if looks_like_project(path, entries) {
+    let mut project = build_project(path, entries);
+    project.sub_projects = scan_sub_projects(path);
+    return project;
+  }
+
+  let sub_projects = scan_sub_projects(path);
+  if !sub_projects.is_empty() {
+    let mut project = build_umbrella_project(path, &sub_projects);
+    project.sub_projects = sub_projects;
+    return project;
+  }
+
+  build_manual_project(path)
 }
 
 fn build_sub_project(path: &Path, entries: &[PathBuf]) -> SubProject {
@@ -331,12 +327,8 @@ fn build_sub_project(path: &Path, entries: &[PathBuf]) -> SubProject {
   let detection = detect_stack(path, &markers, entries);
 
   SubProject {
-    name: path
-      .file_name()
-      .and_then(|v| v.to_str())
-      .unwrap_or("unnamed")
-      .to_string(),
-    path: path.to_string_lossy().to_string(),
+    name: get_path_name(path, "unnamed"),
+    path: normalize_path(&path.to_string_lossy()),
     stack: detection.stack,
     project_type: detection.project_type,
     detected_files: markers,
@@ -344,17 +336,17 @@ fn build_sub_project(path: &Path, entries: &[PathBuf]) -> SubProject {
   }
 }
 
-/// Build a project from an umbrella folder that has no markers but contains sub-projects
-fn build_umbrella_project(path: &Path, subs: &[SubProject]) -> ProjectRecord {
+fn build_umbrella_project(path: &Path, sub_projects: &[SubProject]) -> ProjectRecord {
   let now = now_iso();
 
-  // Aggregate stack and type from sub-projects
-  let mut all_stacks: Vec<String> = subs.iter().flat_map(|s| s.stack.clone()).collect();
+  let mut all_stacks: Vec<String> = sub_projects.iter().flat_map(|sub_project| sub_project.stack.clone()).collect();
   all_stacks.sort();
   all_stacks.dedup();
 
-  let has_frontend = subs.iter().any(|s| s.project_type == "frontend");
-  let has_backend = subs.iter().any(|s| s.project_type == "backend" || s.project_type == "fullstack");
+  let has_frontend = sub_projects.iter().any(|sub_project| sub_project.project_type == "frontend");
+  let has_backend = sub_projects
+    .iter()
+    .any(|sub_project| sub_project.project_type == "backend" || sub_project.project_type == "fullstack");
   let project_type = if has_frontend && has_backend {
     "fullstack".to_string()
   } else if has_frontend {
@@ -365,18 +357,14 @@ fn build_umbrella_project(path: &Path, subs: &[SubProject]) -> ProjectRecord {
     "other".to_string()
   };
 
-  let sub_names: Vec<String> = subs.iter().map(|s| s.name.clone()).collect();
+  let sub_names: Vec<String> = sub_projects.iter().map(|sub_project| sub_project.name.clone()).collect();
   let description = format!("Umbrella project with sub-projects: {}.", sub_names.join(", "));
 
   ProjectRecord {
     id: make_id("project"),
     source: "scanned".into(),
-    name: path
-      .file_name()
-      .and_then(|v| v.to_str())
-      .unwrap_or("Unnamed project")
-      .to_string(),
-    path: path.to_string_lossy().to_string(),
+    name: get_path_name(path, "Unnamed project"),
+    path: normalize_path(&path.to_string_lossy()),
     description,
     tags: Vec::new(),
     client: String::new(),
@@ -430,6 +418,43 @@ fn looks_like_project(path: &Path, entries: &[PathBuf]) -> bool {
   })
 }
 
+fn looks_like_workspace(entries: &[PathBuf]) -> bool {
+  has_workspace_markers(entries) || count_project_like_children(entries) >= 2
+}
+
+fn has_workspace_markers(entries: &[PathBuf]) -> bool {
+  entries.iter().any(|entry| {
+    let Some(name) = entry.file_name().and_then(|value| value.to_str()) else {
+      return false;
+    };
+
+    matches!(name, "pnpm-workspace.yaml" | "turbo.json") || name.ends_with(".xcworkspace") || name.ends_with(".sln")
+  })
+}
+
+fn suggest_root_child_kind(path: &Path, entries: &[PathBuf]) -> String {
+  if looks_like_workspace(entries) {
+    return ROOT_KIND_WORKSPACE.into();
+  }
+
+  if looks_like_project(path, entries) || count_project_like_children(entries) > 0 {
+    return ROOT_KIND_PROJECT.into();
+  }
+
+  ROOT_KIND_IGNORED.into()
+}
+
+fn count_project_like_children(entries: &[PathBuf]) -> usize {
+  entries
+    .iter()
+    .filter(|entry| entry.is_dir() && !should_ignore_directory(entry))
+    .filter(|entry| {
+      let child_entries = read_directory_entries(entry);
+      looks_like_project(entry, &child_entries) || !scan_sub_projects(entry).is_empty()
+    })
+    .count()
+}
+
 fn build_project(path: &Path, entries: &[PathBuf]) -> ProjectRecord {
   let markers = collect_markers(path, entries);
   let detection = detect_stack(path, &markers, entries);
@@ -438,12 +463,8 @@ fn build_project(path: &Path, entries: &[PathBuf]) -> ProjectRecord {
   ProjectRecord {
     id: make_id("project"),
     source: "scanned".into(),
-    name: path
-      .file_name()
-      .and_then(|value| value.to_str())
-      .unwrap_or("Unnamed project")
-      .to_string(),
-    path: path.to_string_lossy().to_string(),
+    name: get_path_name(path, "Unnamed project"),
+    path: normalize_path(&path.to_string_lossy()),
     description: detection.description,
     tags: Vec::new(),
     client: String::new(),
@@ -472,12 +493,8 @@ fn build_manual_project(path: &Path) -> ProjectRecord {
   ProjectRecord {
     id: make_id("project"),
     source: "manual".into(),
-    name: path
-      .file_name()
-      .and_then(|value| value.to_str())
-      .unwrap_or("Unnamed project")
-      .to_string(),
-    path: path.to_string_lossy().to_string(),
+    name: get_path_name(path, "Unnamed project"),
+    path: normalize_path(&path.to_string_lossy()),
     description: String::new(),
     tags: Vec::new(),
     client: String::new(),
@@ -533,6 +550,39 @@ fn collect_markers(path: &Path, entries: &[PathBuf]) -> Vec<String> {
   );
 
   sanitize_list(&markers)
+}
+
+fn read_directory_entries(path: &Path) -> Vec<PathBuf> {
+  fs::read_dir(path)
+    .ok()
+    .map(|entries| entries.filter_map(Result::ok).map(|entry| entry.path()).collect())
+    .unwrap_or_default()
+}
+
+fn list_visible_child_directories(path: &Path) -> Result<Vec<PathBuf>, String> {
+  let entries = fs::read_dir(path).map_err(|error| error.to_string())?;
+
+  Ok(entries
+    .filter_map(Result::ok)
+    .map(|entry| entry.path())
+    .filter(|entry| entry.is_dir() && !should_ignore_directory(entry))
+    .collect())
+}
+
+fn should_ignore_directory(path: &Path) -> bool {
+  let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+    return true;
+  };
+
+  IGNORED_DIRECTORIES.contains(&name) || name.starts_with('.')
+}
+
+fn get_path_name(path: &Path, fallback: &str) -> String {
+  path
+    .file_name()
+    .and_then(|value| value.to_str())
+    .unwrap_or(fallback)
+    .to_string()
 }
 
 struct Detection {

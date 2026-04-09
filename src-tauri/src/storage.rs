@@ -1,8 +1,8 @@
-use crate::types::{AppStore, ProjectRecord, RootFolder};
+use crate::types::{AppStore, ProjectRecord, RootChildRule, RootFolder};
 use crate::utils::{comparable_path, is_absolute_path, make_id, normalize_path, now_iso, sanitize_list};
 use std::{
   fs,
-  path::{Path, PathBuf},
+  path::PathBuf,
 };
 use tauri::{AppHandle, Manager};
 
@@ -56,6 +56,7 @@ pub fn sanitize_root(root: &RootFolder, default_depth: u8) -> Result<RootFolder,
     } else {
       root.created_at.clone()
     },
+    child_rules: sanitize_root_child_rules(&root.child_rules),
   })
 }
 
@@ -108,7 +109,7 @@ pub fn sanitize_project(project: &ProjectRecord) -> Result<ProjectRecord, String
     notes: project.notes.clone(),
     detected_files: sanitize_list(&project.detected_files),
     git: project.git.clone(),
-    path_exists: Path::new(&path).exists(),
+    path_exists: std::path::Path::new(&path).exists(),
     workspace_id: project.workspace_id.clone(),
     sub_projects: project.sub_projects.clone(),
   })
@@ -122,45 +123,25 @@ pub fn has_project_with_path(store: &AppStore, path: &str, current_id: &str) -> 
     .any(|project| comparable_path(&project.path) == normalized && project.id != current_id)
 }
 
-pub fn maybe_seed_default_roots(store: &mut AppStore) {
-  if !store.roots.is_empty() || !store.projects.is_empty() {
-    return;
-  }
-
-  let Some(home) = dirs::home_dir() else {
-    return;
-  };
-
-  #[cfg(target_os = "windows")]
-  let candidates = [
-    ("Documents dev", home.join("Documents/dev")),
-    ("Documents _dev", home.join("Documents/_dev")),
-    ("Projects", home.join("Projects")),
-    ("Source repos", home.join("source/repos")),
-  ];
-
-  #[cfg(not(target_os = "windows"))]
-  let candidates = [
-    ("Documents dev", home.join("Documents/dev")),
-    ("Documents _dev", home.join("Documents/_dev")),
-    ("Projects", home.join("Projects")),
-    ("Desktop clientes", home.join("Desktop/clientes")),
-  ];
-
-  let mut created_roots: Vec<RootFolder> = candidates
+fn sanitize_root_child_rules(rules: &[RootChildRule]) -> Vec<RootChildRule> {
+  let mut cleaned: Vec<RootChildRule> = rules
     .iter()
-    .filter(|(_, path)| path.exists())
-    .map(|(label, path)| RootFolder {
-      id: make_id("root"),
-      path: path.to_string_lossy().to_string(),
-      label: label.to_string(),
-      max_depth: store.preferences.root_scan_depth.clamp(1, 6),
-      created_at: now_iso(),
+    .filter_map(|rule| {
+      let path = normalize_path(&rule.path);
+      if path.is_empty() || !is_absolute_path(&path) {
+        return None;
+      }
+
+      let kind = match rule.kind.as_str() {
+        "workspace" | "project" | "ignored" => rule.kind.clone(),
+        _ => return None,
+      };
+
+      Some(RootChildRule { path, kind })
     })
     .collect();
 
-  created_roots.sort_by(|left, right| comparable_path(&left.path).cmp(&comparable_path(&right.path)));
-  created_roots.dedup_by(|left, right| comparable_path(&left.path) == comparable_path(&right.path));
-
-  store.roots = created_roots;
+  cleaned.sort_by(|left, right| comparable_path(&left.path).cmp(&comparable_path(&right.path)));
+  cleaned.dedup_by(|left, right| comparable_path(&left.path) == comparable_path(&right.path));
+  cleaned
 }

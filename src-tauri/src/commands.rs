@@ -1,7 +1,7 @@
 use crate::{
   project_actions, scanner,
-  storage::{self, maybe_seed_default_roots, sanitize_project, sanitize_root},
-  types::{ActionResult, AppStore, Preferences, ProjectActionPayload, ProjectRecord, RootFolder},
+  storage::{self, sanitize_project, sanitize_root},
+  types::{ActionResult, AppStore, Preferences, ProjectActionPayload, ProjectRecord, RootChildRule, RootFolder, RootFolderPreview},
 };
 use tauri::{AppHandle, State};
 
@@ -12,26 +12,26 @@ pub struct AppState {
 #[tauri::command]
 pub fn load_app_state(app: AppHandle, state: State<AppState>) -> Result<AppStore, String> {
   let _guard = state.lock.lock().map_err(|_| "App state lock is poisoned.")?;
-  let mut store = storage::load_store(&app)?;
-  let had_roots = !store.roots.is_empty();
-  maybe_seed_default_roots(&mut store);
-
-  if !had_roots && !store.roots.is_empty() {
-    store = scanner::scan_store(store);
-    storage::save_store(&app, &store)?;
-  }
-
-  Ok(store)
+  storage::load_store(&app)
 }
 
 #[tauri::command]
 pub fn scan_projects(app: AppHandle, state: State<AppState>) -> Result<AppStore, String> {
   let _guard = state.lock.lock().map_err(|_| "App state lock is poisoned.")?;
   let mut store = storage::load_store(&app)?;
-  maybe_seed_default_roots(&mut store);
   store = scanner::scan_store(store);
   storage::save_store(&app, &store)?;
   Ok(store)
+}
+
+#[tauri::command]
+pub fn preview_root_folder(
+  state: State<AppState>,
+  path: String,
+  child_rules: Vec<RootChildRule>,
+) -> Result<RootFolderPreview, String> {
+  let _guard = state.lock.lock().map_err(|_| "App state lock is poisoned.")?;
+  scanner::preview_root_folder(std::path::Path::new(&path), &child_rules)
 }
 
 #[tauri::command]

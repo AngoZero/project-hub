@@ -111,7 +111,7 @@ export function buildSampleProjects(language: ResolvedLanguage, platform: AppPla
 }
 
 export const FALLBACK_STORE: AppStore = {
-  version: 2,
+  version: 3,
   roots: [],
   projects: [],
   workspaces: [],
@@ -122,5 +122,6 @@ export const FALLBACK_STORE: AppStore = {
     rootScanDepth: 3,
     showArchived: true,
     language: 'system',
+    hasCompletedOnboarding: false,
   },
 };

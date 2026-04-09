@@ -10,6 +10,7 @@ export const PROJECT_TYPES = [
 export const PROJECT_STATUSES = ['active', 'paused', 'archived'] as const;
 
 export const SORT_OPTIONS = ['name', 'lastAccessed', 'favorite', 'added'] as const;
+export const ROOT_CHILD_KINDS = ['workspace', 'project', 'ignored'] as const;
 
 export const NAV_ITEMS = ['dashboard', 'catalog', 'roots', 'settings'] as const;
 export const APP_LANGUAGES = ['system', 'es', 'en'] as const;
@@ -20,6 +21,7 @@ export type SortOption = (typeof SORT_OPTIONS)[number];
 export type NavItem = (typeof NAV_ITEMS)[number];
 export type LanguagePreference = (typeof APP_LANGUAGES)[number];
 export type ResolvedLanguage = Exclude<LanguagePreference, 'system'>;
+export type RootChildKind = (typeof ROOT_CHILD_KINDS)[number];
 
 export interface QuickCommand {
   id: string;
@@ -63,6 +65,26 @@ export interface Workspace {
   path: string;
 }
 
+export interface RootChildRule {
+  path: string;
+  kind: RootChildKind;
+}
+
+export interface RootChildPreview {
+  name: string;
+  path: string;
+  markers: string[];
+  suggestedKind: RootChildKind;
+  currentKind: RootChildKind;
+  descendantProjectCount: number;
+}
+
+export interface RootFolderPreview {
+  path: string;
+  suggestedLabel: string;
+  children: RootChildPreview[];
+}
+
 export interface ProjectRecord {
   id: string;
   source: 'manual' | 'scanned' | 'sample';
@@ -95,6 +117,7 @@ export interface RootFolder {
   label: string;
   maxDepth: number;
   createdAt: string;
+  childRules: RootChildRule[];
 }
 
 export interface Preferences {
@@ -104,6 +127,7 @@ export interface Preferences {
   rootScanDepth: number;
   showArchived: boolean;
   language: LanguagePreference;
+  hasCompletedOnboarding: boolean;
 }
 
 export interface AppStore {

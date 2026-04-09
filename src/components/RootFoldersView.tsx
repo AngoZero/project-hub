@@ -1,4 +1,4 @@
-import { FolderPlus, RefreshCcw, Trash2 } from 'lucide-react';
+import { FolderPlus, RefreshCcw, Settings2, Trash2 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { getRootsPathPlaceholder, useI18n } from '../app/i18n';
 import type { RootFolder } from '../app/types';
@@ -10,6 +10,7 @@ interface RootFoldersViewProps {
   onSave: (root: RootFolder) => Promise<void>;
   onDelete: (rootId: string) => Promise<void>;
   onRescan: () => Promise<void>;
+  onReview: (root: RootFolder) => void;
 }
 
 interface RootFolderForm {
@@ -18,7 +19,7 @@ interface RootFolderForm {
   maxDepth: number;
 }
 
-export function RootFoldersView({ roots, defaultDepth, onSave, onDelete, onRescan }: RootFoldersViewProps) {
+export function RootFoldersView({ roots, defaultDepth, onSave, onDelete, onRescan, onReview }: RootFoldersViewProps) {
   const { platform, t } = useI18n();
   const { register, handleSubmit, reset } = useForm<RootFolderForm>({
     defaultValues: {
@@ -35,6 +36,7 @@ export function RootFoldersView({ roots, defaultDepth, onSave, onDelete, onResca
       label: values.label.trim(),
       maxDepth: values.maxDepth,
       createdAt: new Date().toISOString(),
+      childRules: [],
     });
     reset({ path: '', label: '', maxDepth: defaultDepth });
   }
@@ -88,9 +90,14 @@ export function RootFoldersView({ roots, defaultDepth, onSave, onDelete, onResca
                     <span>{root.path}</span>
                     <small>{t('rootsDepthValue', { value: root.maxDepth })}</small>
                   </div>
-                  <button type="button" className="icon-button" onClick={() => void onDelete(root.id)} aria-label={`${t('actionDelete')} ${root.path}`}>
-                    <Trash2 size={16} />
-                  </button>
+                  <div className="button-row">
+                    <button type="button" className="icon-button" onClick={() => onReview(root)} aria-label={`${t('rootsReviewStructure')} ${root.path}`}>
+                      <Settings2 size={16} />
+                    </button>
+                    <button type="button" className="icon-button" onClick={() => void onDelete(root.id)} aria-label={`${t('actionDelete')} ${root.path}`}>
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
                 </article>
               ))
             ) : (

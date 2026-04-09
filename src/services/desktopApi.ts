@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { detectPlatform } from '../app/platform';
 import { FALLBACK_STORE } from '../app/demoData';
-import type { ActionResult, AppStore, Preferences, ProjectRecord, RootFolder } from '../app/types';
+import type { ActionResult, AppStore, Preferences, ProjectRecord, RootChildRule, RootFolder, RootFolderPreview } from '../app/types';
 import { getComparablePath, getPathLeafName, normalizePath } from '../utils/paths';
 
 const STORAGE_KEY = 'project-hub-browser-store';
@@ -30,11 +30,18 @@ function cloneStore(store: AppStore): AppStore {
   const normalizedPreferences: Preferences = {
     ...store.preferences,
     language: store.preferences.language ?? 'system',
+    hasCompletedOnboarding: store.preferences.hasCompletedOnboarding ?? false,
   };
 
   return {
     ...store,
-    roots: store.roots.map((root) => ({ ...root })),
+    roots: store.roots.map((root) => ({
+      ...root,
+      childRules: (root.childRules ?? []).map((rule) => ({
+        ...rule,
+        path: normalizePath(rule.path),
+      })),
+    })),
     projects: store.projects.map((project) => ({
       ...project,
       tags: [...project.tags],
@@ -137,6 +144,41 @@ export async function pickProjectFolder(): Promise<string | null> {
   return typeof selected === 'string' ? normalizePath(selected, detectPlatform()) : null;
 }
 
+export async function pickRootFolder(): Promise<string | null> {
+  if (!isTauriRuntime()) {
+    const value = window.prompt('Absolute root folder path');
+    return value ? normalizePath(value, detectPlatform()) : null;
+  }
+
+  const selected = await open({
+    directory: true,
+    multiple: false,
+  });
+
+  return typeof selected === 'string' ? normalizePath(selected, detectPlatform()) : null;
+}
+
+export async function previewRootFolder(path: string, childRules: RootChildRule[] = []): Promise<RootFolderPreview> {
+  const platform = detectPlatform();
+  const normalizedPath = normalizePath(path, platform);
+
+  if (!isTauriRuntime()) {
+    return {
+      path: normalizedPath,
+      suggestedLabel: getPathLeafName(normalizedPath, platform) || 'root',
+      children: [],
+    };
+  }
+
+  return invoke<RootFolderPreview>('preview_root_folder', {
+    path: normalizedPath,
+    childRules: childRules.map((rule) => ({
+      ...rule,
+      path: normalizePath(rule.path, platform),
+    })),
+  });
+}
+
 export async function inspectProjectPath(path: string): Promise<ProjectRecord> {
   if (!isTauriRuntime()) {
     const platform = detectPlatform();
@@ -203,6 +245,10 @@ export async function saveRootFolder(root: RootFolder): Promise<AppStore> {
     const normalizedRoot = {
       ...root,
       path: normalizePath(root.path, platform),
+      childRules: (root.childRules ?? []).map((rule) => ({
+        ...rule,
+        path: normalizePath(rule.path, platform),
+      })),
     };
     const existingIndex = store.roots.findIndex((item) => item.id === root.id);
 

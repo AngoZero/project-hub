@@ -4,6 +4,10 @@ fn default_language_preference() -> String {
   "system".into()
 }
 
+fn default_has_completed_onboarding() -> bool {
+  false
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuickCommand {
@@ -118,6 +122,34 @@ pub struct RootFolder {
   pub label: String,
   pub max_depth: u8,
   pub created_at: String,
+  #[serde(default)]
+  pub child_rules: Vec<RootChildRule>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RootChildRule {
+  pub path: String,
+  pub kind: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RootChildPreview {
+  pub name: String,
+  pub path: String,
+  pub markers: Vec<String>,
+  pub suggested_kind: String,
+  pub current_kind: String,
+  pub descendant_project_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RootFolderPreview {
+  pub path: String,
+  pub suggested_label: String,
+  pub children: Vec<RootChildPreview>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,6 +162,8 @@ pub struct Preferences {
   pub show_archived: bool,
   #[serde(default = "default_language_preference")]
   pub language: String,
+  #[serde(default = "default_has_completed_onboarding")]
+  pub has_completed_onboarding: bool,
 }
 
 impl Default for Preferences {
@@ -141,6 +175,7 @@ impl Default for Preferences {
       root_scan_depth: 3,
       show_archived: true,
       language: default_language_preference(),
+      has_completed_onboarding: default_has_completed_onboarding(),
     }
   }
 }
@@ -159,7 +194,7 @@ pub struct AppStore {
 impl Default for AppStore {
   fn default() -> Self {
     Self {
-      version: 2,
+      version: 3,
       roots: Vec::new(),
       projects: Vec::new(),
       workspaces: Vec::new(),

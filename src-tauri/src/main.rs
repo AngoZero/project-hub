@@ -16,6 +16,7 @@ fn main() {
     .invoke_handler(tauri::generate_handler![
       commands::load_app_state,
       commands::scan_projects,
+      commands::preview_root_folder,
       commands::inspect_project_path,
       commands::save_project,
       commands::delete_project,

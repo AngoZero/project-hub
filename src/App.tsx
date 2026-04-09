@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, RefreshCcw, Search, SlidersHorizontal } from 'lucide-react';
+import { Plus, RefreshCcw, Search, SlidersHorizontal, X } from 'lucide-react';
 import { I18nProvider, getFileManagerLabel, getProjectStatusLabel, getProjectTypeLabel, getViewLabel, useI18n } from './app/i18n';
-import { PROJECT_STATUSES, PROJECT_TYPES, type ProjectRecord } from './app/types';
+import { PROJECT_STATUSES, PROJECT_TYPES, type ProjectRecord, type RootFolder, type RootFolderPreview } from './app/types';
+import { OnboardingView } from './components/OnboardingView';
 import { ProjectCard } from './components/ProjectCard';
 import { ProjectDetailModal } from './components/ProjectDetailModal';
 import { ProjectFormModal } from './components/ProjectFormModal';
 import { ProjectTable } from './components/ProjectTable';
 import { RootFoldersView } from './components/RootFoldersView';
+import { RootStructureReview } from './components/RootStructureReview';
 import { SettingsView } from './components/SettingsView';
 import { Sidebar } from './components/Sidebar';
 import { SplashScreen } from './components/SplashScreen';
 import { useProjectHub } from './hooks/useProjectHub';
-import { inspectProjectPath, pickProjectFolder } from './services/desktopApi';
+import { inspectProjectPath, pickProjectFolder, pickRootFolder, previewRootFolder } from './services/desktopApi';
+import { createId } from './utils/formatters';
 import { getComparablePath } from './utils/paths';
 
 function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
@@ -20,6 +23,10 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
   const [isProjectDetailOpen, setProjectDetailOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectRecord | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [onboardingPreview, setOnboardingPreview] = useState<RootFolderPreview | null>(null);
+  const [reviewRoot, setReviewRoot] = useState<RootFolder | null>(null);
+  const [reviewPreview, setReviewPreview] = useState<RootFolderPreview | null>(null);
+  const [isStructureModalOpen, setStructureModalOpen] = useState(false);
 
   const catalogProjects = useMemo(
     () => (hub.visibleProjects.length > 0 ? hub.visibleProjects : hub.sampleProjects),
@@ -29,6 +36,22 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
   function openManualProject(): void {
     setEditingProject(null);
     setProjectModalOpen(true);
+  }
+
+  function updatePreviewKind(
+    preview: RootFolderPreview | null,
+    setPreview: (value: RootFolderPreview | null) => void,
+    path: string,
+    kind: RootFolderPreview['children'][number]['currentKind'],
+  ): void {
+    if (!preview) {
+      return;
+    }
+
+    setPreview({
+      ...preview,
+      children: preview.children.map((child) => (child.path === path ? { ...child, currentKind: kind } : child)),
+    });
   }
 
   async function openCreateProject(): Promise<void> {
@@ -89,6 +112,86 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
     }
   }
 
+  async function handlePickOnboardingRoot(): Promise<void> {
+    let selectedPath: string | null = null;
+
+    try {
+      selectedPath = await pickRootFolder();
+    } catch {
+      hub.showStatus({
+        ok: false,
+        message: t('statusErrorFolderPicker'),
+      });
+      return;
+    }
+
+    if (!selectedPath) {
+      return;
+    }
+
+    try {
+      const preview = await previewRootFolder(selectedPath);
+      setOnboardingPreview(preview);
+    } catch {
+      hub.showStatus({
+        ok: false,
+        message: t('statusErrorPreviewRoot'),
+      });
+    }
+  }
+
+  async function handleConfirmOnboarding(): Promise<void> {
+    if (!onboardingPreview) {
+      return;
+    }
+
+    const root: RootFolder = {
+      id: createId('root'),
+      path: onboardingPreview.path,
+      label: onboardingPreview.suggestedLabel,
+      maxDepth: hub.store.preferences.rootScanDepth,
+      createdAt: new Date().toISOString(),
+      childRules: onboardingPreview.children.map((child) => ({
+        path: child.path,
+        kind: child.currentKind,
+      })),
+    };
+
+    await hub.completeOnboarding(root);
+    setOnboardingPreview(null);
+  }
+
+  async function handleOpenStructureReview(root: RootFolder): Promise<void> {
+    try {
+      const preview = await previewRootFolder(root.path, root.childRules);
+      setReviewRoot(root);
+      setReviewPreview(preview);
+      setStructureModalOpen(true);
+    } catch {
+      hub.showStatus({
+        ok: false,
+        message: t('statusErrorPreviewRoot'),
+      });
+    }
+  }
+
+  async function handleSaveStructureReview(): Promise<void> {
+    if (!reviewRoot || !reviewPreview) {
+      return;
+    }
+
+    await hub.persistRoot({
+      ...reviewRoot,
+      childRules: reviewPreview.children.map((child) => ({
+        path: child.path,
+        kind: child.currentKind,
+      })),
+    });
+    setStructureModalOpen(false);
+    setReviewRoot(null);
+    setReviewPreview(null);
+  }
+
   function handleChangeView(view: typeof hub.currentView): void {
     setProjectDetailOpen(false);
     hub.setCurrentView(view);
@@ -118,6 +221,29 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
     document.documentElement.dataset.theme = hub.store.preferences.theme;
     document.documentElement.style.colorScheme = hub.store.preferences.theme;
   }, [hub.store.preferences.theme]);
+
+  if (hub.requiresOnboarding) {
+    return (
+      <>
+        <SplashScreen isLoading={hub.isLoading} />
+        <main className="onboarding-frame">
+          {hub.statusMessage ? (
+            <div className={`toast ${hub.statusMessage.ok ? 'toast--success' : 'toast--error'}`} aria-live="polite">
+              <span>{hub.statusMessage.message}</span>
+            </div>
+          ) : null}
+
+          <OnboardingView
+            isBusy={hub.isSaving}
+            preview={onboardingPreview}
+            onPickRoot={handlePickOnboardingRoot}
+            onConfirm={handleConfirmOnboarding}
+            onKindChange={(path, kind) => updatePreviewKind(onboardingPreview, setOnboardingPreview, path, kind)}
+          />
+        </main>
+      </>
+    );
+  }
 
   return (
     <>
@@ -317,6 +443,7 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
             onSave={hub.persistRoot}
             onDelete={hub.removeRoot}
             onRescan={hub.refreshScan}
+            onReview={(root) => void handleOpenStructureReview(root)}
           />
         ) : null}
 
@@ -340,6 +467,58 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
         onDelete={(projectId) => void handleDeleteProject(projectId)}
         onAction={(projectId, kind, targetId) => void hub.executeProjectAction(projectId, kind, targetId)}
       />
+
+      {isStructureModalOpen && reviewPreview ? (
+        <div className="modal-backdrop" role="presentation">
+          <div className="modal modal--structure" role="dialog" aria-modal="true" aria-labelledby="root-structure-title">
+            <div className="modal__header">
+              <div>
+                <p className="sidebar__eyebrow">{t('rootsReviewStructure')}</p>
+                <h2 id="root-structure-title">{reviewRoot?.label || t('rootsReviewTitle')}</h2>
+              </div>
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => {
+                  setStructureModalOpen(false);
+                  setReviewRoot(null);
+                  setReviewPreview(null);
+                }}
+                aria-label={t('actionClose')}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="modal__body">
+              <RootStructureReview
+                preview={reviewPreview}
+                title={t('rootsReviewTitle')}
+                description={t('rootsReviewCopy')}
+                emptyCopy={t('rootsReviewEmpty')}
+                onKindChange={(path, kind) => updatePreviewKind(reviewPreview, setReviewPreview, path, kind)}
+              />
+            </div>
+
+            <div className="modal__footer">
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={() => {
+                  setStructureModalOpen(false);
+                  setReviewRoot(null);
+                  setReviewPreview(null);
+                }}
+              >
+                {t('actionClose')}
+              </button>
+              <button type="button" className="button button--primary" onClick={() => void handleSaveStructureReview()}>
+                {t('actionSaveRootFolder')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
     </>
   );
