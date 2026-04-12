@@ -50,8 +50,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: __VERSION__
-          releaseName: Project Hub v__VERSION__
+          tagName: ${{ github.ref_name }}
+          releaseName: Project Hub ${{ github.ref_name }}
           releaseBody: |
             Project Hub release for macOS and Windows.
 
