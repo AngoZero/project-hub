@@ -209,7 +209,23 @@ pub struct ProjectActionPayload {
   pub kind: String,
   pub target_id: Option<String>,
   #[serde(default)]
+  pub path_override: Option<String>,
+  #[serde(default)]
   pub language: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolIntegration {
+  pub id: String,
+  pub label: String,
+  pub category: String,
+  pub brand: String,
+  pub installed: bool,
+  pub launch_method: String,
+  pub command: Option<String>,
+  pub executable_path: Option<String>,
+  pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

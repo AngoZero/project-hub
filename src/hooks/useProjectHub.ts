@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_APP_STORE } from '../app/defaultStore';
 import { resolveLanguagePreference, translate, type TranslationKey } from '../app/i18n';
-import type { ActionResult, AppStore, CatalogFilters, NavItem, Preferences, ProjectRecord, RootFolder } from '../app/types';
-import { deleteProject, deleteRootFolder, loadAppStore, runProjectAction, savePreferences, saveProject, saveRootFolder, scanProjects } from '../services/desktopApi';
+import type { ActionResult, AppStore, CatalogFilters, NavItem, Preferences, ProjectActionKind, ProjectRecord, RootFolder, ToolIntegration } from '../app/types';
+import { deleteProject, deleteRootFolder, detectIntegrations, loadAppStore, runProjectAction, savePreferences, saveProject, saveRootFolder, scanProjects } from '../services/desktopApi';
 import { filterProjects, sortProjects } from '../utils/projectFilters';
 
 const INITIAL_FILTERS: CatalogFilters = {
@@ -44,6 +44,7 @@ export function useProjectHub() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState<ActionResult | null>(null);
+  const [toolIntegrations, setToolIntegrations] = useState<ToolIntegration[]>([]);
 
   useEffect(() => {
     if (!statusMessage) return;
@@ -70,6 +71,7 @@ export function useProjectHub() {
         }
         setStore(nextStore);
         setSelectedProjectId((current) => current ?? nextStore.projects[0]?.id ?? null);
+        void refreshIntegrations();
       } catch (error) {
         if (!isActive) {
           return;
@@ -253,10 +255,11 @@ export function useProjectHub() {
 
   async function executeProjectAction(
     projectId: string,
-    kind: 'openFinder' | 'openCode' | 'openTerminal' | 'openClaude' | 'openCodex' | 'openLocalUrl' | 'runQuickCommand',
+    kind: ProjectActionKind,
     targetId?: string,
+    pathOverride?: string,
   ): Promise<void> {
-    const result = await runProjectAction(projectId, { kind, targetId, language: resolvedLanguage });
+    const result = await runProjectAction(projectId, { kind, targetId, pathOverride, language: resolvedLanguage });
     setStatusMessage(result);
     if (result.ok) {
       const nextStore = await loadAppStore();
@@ -270,6 +273,14 @@ export function useProjectHub() {
 
   function clearStatus(): void {
     setStatusMessage(null);
+  }
+
+  async function refreshIntegrations(): Promise<void> {
+    try {
+      setToolIntegrations(await detectIntegrations());
+    } catch {
+      setToolIntegrations([]);
+    }
   }
 
   return {
@@ -291,8 +302,10 @@ export function useProjectHub() {
     isLoading,
     isSaving,
     statusMessage,
+    toolIntegrations,
     clearStatus,
     showStatus,
+    refreshIntegrations,
     persistProject,
     removeProject,
     persistRoot,

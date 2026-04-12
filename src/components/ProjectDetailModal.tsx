@@ -1,21 +1,20 @@
 import { useEffect } from 'react';
-import type { ProjectRecord } from '../app/types';
+import type { ProjectActionKind, ProjectRecord, SubProject, ToolIntegration } from '../app/types';
 import { ProjectDetail } from './ProjectDetail';
 
 interface ProjectDetailModalProps {
   project: ProjectRecord | null;
+  subProject?: SubProject | null;
   isOpen: boolean;
   onClose: () => void;
   onEdit: () => void;
   onDelete: (projectId: string) => void;
-  onAction: (
-    projectId: string,
-    kind: 'openFinder' | 'openCode' | 'openTerminal' | 'openClaude' | 'openCodex' | 'openLocalUrl' | 'runQuickCommand',
-    targetId?: string,
-  ) => void;
+  onAction: (projectId: string, kind: ProjectActionKind, targetId?: string, pathOverride?: string) => void;
+  onSelectSubProject: (parentProjectId: string, subProjectPath: string) => void;
+  integrations: ToolIntegration[];
 }
 
-export function ProjectDetailModal({ project, isOpen, onClose, onEdit, onDelete, onAction }: ProjectDetailModalProps) {
+export function ProjectDetailModal({ project, subProject = null, isOpen, onClose, onEdit, onDelete, onAction, onSelectSubProject, integrations }: ProjectDetailModalProps) {
   useEffect(() => {
     if (!isOpen) {
       return undefined;
@@ -54,10 +53,13 @@ export function ProjectDetailModal({ project, isOpen, onClose, onEdit, onDelete,
         <div className="modal__body modal__body--detail">
           <ProjectDetail
             project={project}
+            subProject={subProject}
             isModal
             onEdit={onEdit}
             onDelete={onDelete}
             onAction={onAction}
+            onSelectSubProject={onSelectSubProject}
+            integrations={integrations}
             onClose={onClose}
           />
         </div>

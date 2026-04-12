@@ -1,7 +1,7 @@
 use crate::{
   project_actions, scanner,
   storage::{self, sanitize_project, sanitize_root},
-  types::{ActionResult, AppStore, Preferences, ProjectActionPayload, ProjectRecord, RootChildRule, RootFolder, RootFolderPreview},
+  types::{ActionResult, AppStore, Preferences, ProjectActionPayload, ProjectRecord, RootChildRule, RootFolder, RootFolderPreview, ToolIntegration},
 };
 use tauri::{AppHandle, State};
 
@@ -39,6 +39,18 @@ pub fn inspect_project_path(state: State<AppState>, path: String) -> Result<Proj
   let _guard = state.lock.lock().map_err(|_| "App state lock is poisoned.")?;
   let project_path = std::path::Path::new(&path);
   scanner::inspect_project_path(project_path)
+}
+
+#[tauri::command]
+pub fn authorize_destructive_action(state: State<AppState>, language: String) -> Result<ActionResult, String> {
+  let _guard = state.lock.lock().map_err(|_| "App state lock is poisoned.")?;
+  crate::project_actions::authorize_destructive_action(&language)
+}
+
+#[tauri::command]
+pub fn detect_integrations(state: State<AppState>) -> Result<Vec<ToolIntegration>, String> {
+  let _guard = state.lock.lock().map_err(|_| "App state lock is poisoned.")?;
+  Ok(crate::integrations::detect_integrations())
 }
 
 #[tauri::command]

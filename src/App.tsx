@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, RefreshCcw, Search, SlidersHorizontal, X } from 'lucide-react';
 import { I18nProvider, getFileManagerLabel, getProjectStatusLabel, getProjectTypeLabel, getViewLabel, useI18n } from './app/i18n';
-import { PROJECT_STATUSES, PROJECT_TYPES, type ProjectRecord, type RootFolder, type RootFolderPreview } from './app/types';
+import { PROJECT_STATUSES, PROJECT_TYPES, type ProjectRecord, type RootFolder, type RootFolderPreview, type SubProject } from './app/types';
 import { OnboardingView } from './components/OnboardingView';
 import { ProjectCard } from './components/ProjectCard';
 import { ProjectDetailModal } from './components/ProjectDetailModal';
@@ -13,9 +13,13 @@ import { SettingsView } from './components/SettingsView';
 import { Sidebar } from './components/Sidebar';
 import { SplashScreen } from './components/SplashScreen';
 import { useProjectHub } from './hooks/useProjectHub';
-import { inspectProjectPath, pickProjectFolder, pickRootFolder, previewRootFolder } from './services/desktopApi';
+import { authorizeDestructiveAction, inspectProjectPath, pickProjectFolder, pickRootFolder, previewRootFolder } from './services/desktopApi';
 import { createId } from './utils/formatters';
 import { getComparablePath } from './utils/paths';
+
+type ProjectSelection =
+  | { type: 'project'; projectId: string }
+  | { type: 'subProject'; parentProjectId: string; subProjectPath: string };
 
 function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
   const { platform, t } = useI18n();
@@ -27,10 +31,31 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
   const [reviewRoot, setReviewRoot] = useState<RootFolder | null>(null);
   const [reviewPreview, setReviewPreview] = useState<RootFolderPreview | null>(null);
   const [isStructureModalOpen, setStructureModalOpen] = useState(false);
+  const [detailHistory, setDetailHistory] = useState<ProjectSelection[]>([]);
+  const [projectPendingDelete, setProjectPendingDelete] = useState<ProjectRecord | null>(null);
+  const [isDeleteAuthorizing, setDeleteAuthorizing] = useState(false);
+
+  const detailSelection = detailHistory.at(-1) ?? null;
+  const detailProject = detailSelection
+    ? hub.store.projects.find((project) =>
+        project.id === (detailSelection.type === 'subProject' ? detailSelection.parentProjectId : detailSelection.projectId),
+      ) ?? null
+    : hub.selectedProject;
+  const detailSubProject: SubProject | null = detailSelection?.type === 'subProject'
+    ? detailProject?.subProjects.find((subProject) => subProject.path === detailSelection.subProjectPath) ?? null
+    : null;
 
   function openManualProject(): void {
     setEditingProject(null);
     setProjectModalOpen(true);
+  }
+
+  function closeProjectForm(): void {
+    setProjectModalOpen(false);
+    if (editingProject && detailHistory.length > 0) {
+      setProjectDetailOpen(true);
+    }
+    setEditingProject(null);
   }
 
   function updatePreviewKind(
@@ -73,6 +98,7 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
 
     if (existingProject) {
       hub.setSelectedProjectId(existingProject.id);
+      setDetailHistory([{ type: 'project', projectId: existingProject.id }]);
       setProjectDetailOpen(true);
       hub.showStatus({
         ok: true,
@@ -101,6 +127,7 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
         }),
       });
       hub.setSelectedProjectId(importedProject.id);
+      setDetailHistory([{ type: 'project', projectId: importedProject.id }]);
       setProjectDetailOpen(true);
     } catch {
       // `persistProject` already reports a localized banner.
@@ -189,6 +216,7 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
 
   function handleChangeView(view: typeof hub.currentView): void {
     setProjectDetailOpen(false);
+    setDetailHistory([]);
     hub.setCurrentView(view);
   }
 
@@ -204,12 +232,68 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
 
   function handleSelectProject(projectId: string): void {
     hub.setSelectedProjectId(projectId);
+    setDetailHistory([{ type: 'project', projectId }]);
     setProjectDetailOpen(true);
   }
 
-  async function handleDeleteProject(projectId: string): Promise<void> {
+  function handleSelectSubProject(parentProjectId: string, subProjectPath: string): void {
+    hub.setSelectedProjectId(parentProjectId);
+    setDetailHistory((current) => {
+      const rootSelection: ProjectSelection = { type: 'project', projectId: parentProjectId };
+      const subSelection: ProjectSelection = { type: 'subProject', parentProjectId, subProjectPath };
+      const baseHistory = current.length > 0 ? current.filter((item) => item.type !== 'subProject') : [rootSelection];
+      const hasParent = baseHistory.some((item) => item.type === 'project' && item.projectId === parentProjectId);
+      return [...(hasParent ? baseHistory : [rootSelection]), subSelection];
+    });
+    setProjectDetailOpen(true);
+  }
+
+  function handleCloseProjectDetail(): void {
+    if (detailHistory.length > 1) {
+      setDetailHistory((current) => current.slice(0, -1));
+      return;
+    }
+
     setProjectDetailOpen(false);
-    await hub.removeProject(projectId);
+    setDetailHistory([]);
+  }
+
+  function requestDeleteProject(projectId: string): void {
+    const project = hub.store.projects.find((item) => item.id === projectId) ?? null;
+    if (project) {
+      setProjectPendingDelete(project);
+    }
+  }
+
+  async function confirmDeleteProject(): Promise<void> {
+    if (!projectPendingDelete || isDeleteAuthorizing) {
+      return;
+    }
+
+    setDeleteAuthorizing(true);
+
+    try {
+      await authorizeDestructiveAction(hub.resolvedLanguage);
+    } catch {
+      hub.showStatus({
+        ok: false,
+        message: t('deleteProjectAuthorizationCancelled'),
+      });
+      setDeleteAuthorizing(false);
+      return;
+    }
+
+    try {
+      await hub.removeProject(projectPendingDelete.id);
+    } catch {
+      setDeleteAuthorizing(false);
+      return;
+    }
+
+    setProjectDetailOpen(false);
+    setDetailHistory([]);
+    setProjectPendingDelete(null);
+    setDeleteAuthorizing(false);
   }
 
   useEffect(() => {
@@ -422,7 +506,9 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
                       project={project}
                       isSelected={isProjectDetailOpen && project.id === hub.selectedProjectId}
                       onSelect={handleSelectProject}
-                      onAction={(projectId, kind) => void hub.executeProjectAction(projectId, kind)}
+                      onSelectSubProject={handleSelectSubProject}
+                      onAction={(projectId, kind, targetId) => void hub.executeProjectAction(projectId, kind, targetId)}
+                      integrations={hub.toolIntegrations}
                     />
                   ))}
                 </div>
@@ -448,25 +534,67 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
         ) : null}
 
         {hub.currentView === 'settings' ? (
-          <SettingsView preferences={hub.store.preferences} onSave={hub.persistPreferences} />
+          <SettingsView
+            preferences={hub.store.preferences}
+            integrations={hub.toolIntegrations}
+            onSave={hub.persistPreferences}
+            onRefreshIntegrations={hub.refreshIntegrations}
+          />
         ) : null}
       </main>
 
       <ProjectFormModal
         project={editingProject}
         isOpen={isProjectModalOpen}
-        onClose={() => setProjectModalOpen(false)}
+        onClose={closeProjectForm}
         onSubmit={hub.persistProject}
       />
 
       <ProjectDetailModal
-        project={hub.selectedProject}
+        project={detailProject}
+        subProject={detailSubProject}
         isOpen={isProjectDetailOpen}
-        onClose={() => setProjectDetailOpen(false)}
+        onClose={handleCloseProjectDetail}
         onEdit={openEditProject}
-        onDelete={(projectId) => void handleDeleteProject(projectId)}
-        onAction={(projectId, kind, targetId) => void hub.executeProjectAction(projectId, kind, targetId)}
+        onDelete={requestDeleteProject}
+        onAction={(projectId, kind, targetId, pathOverride) => void hub.executeProjectAction(projectId, kind, targetId, pathOverride)}
+        onSelectSubProject={handleSelectSubProject}
+        integrations={hub.toolIntegrations}
       />
+
+      {projectPendingDelete ? (
+        <div className="modal-backdrop" role="presentation">
+          <div className="modal modal--confirm" role="dialog" aria-modal="true" aria-labelledby="delete-project-title">
+            <div className="modal__header">
+              <div>
+                <p className="sidebar__eyebrow">{t('deleteProjectEyebrow')}</p>
+                <h2 id="delete-project-title">{t('deleteProjectTitle')}</h2>
+              </div>
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => setProjectPendingDelete(null)}
+                aria-label={t('actionClose')}
+                disabled={isDeleteAuthorizing}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="modal__body">
+              <p>{t('deleteProjectCopy', { name: projectPendingDelete.name })}</p>
+              <p className="muted-copy">{t('deleteProjectSystemAuthCopy')}</p>
+            </div>
+            <div className="modal__footer">
+              <button type="button" className="button button--ghost" onClick={() => setProjectPendingDelete(null)} disabled={isDeleteAuthorizing}>
+                {t('actionCancel')}
+              </button>
+              <button type="button" className="button button--danger" onClick={() => void confirmDeleteProject()} disabled={isDeleteAuthorizing}>
+                {t('deleteProjectConfirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isStructureModalOpen && reviewPreview ? (
         <div className="modal-backdrop" role="presentation">

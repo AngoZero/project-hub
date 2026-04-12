@@ -14,6 +14,8 @@ export const ROOT_CHILD_KINDS = ['workspace', 'project', 'ignored'] as const;
 
 export const NAV_ITEMS = ['dashboard', 'catalog', 'roots', 'settings'] as const;
 export const APP_LANGUAGES = ['system', 'es', 'en'] as const;
+export const TOOL_CATEGORIES = ['editor', 'agent', 'terminal', 'fileManager'] as const;
+export const LAUNCH_METHODS = ['command', 'executable', 'system'] as const;
 
 export type ProjectType = (typeof PROJECT_TYPES)[number];
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
@@ -22,6 +24,17 @@ export type NavItem = (typeof NAV_ITEMS)[number];
 export type LanguagePreference = (typeof APP_LANGUAGES)[number];
 export type ResolvedLanguage = Exclude<LanguagePreference, 'system'>;
 export type RootChildKind = (typeof ROOT_CHILD_KINDS)[number];
+export type ToolCategory = (typeof TOOL_CATEGORIES)[number];
+export type LaunchMethod = (typeof LAUNCH_METHODS)[number];
+export type ProjectActionKind =
+  | 'openFinder'
+  | 'openCode'
+  | 'openTerminal'
+  | 'openClaude'
+  | 'openCodex'
+  | 'openIntegration'
+  | 'openLocalUrl'
+  | 'runQuickCommand';
 
 export interface QuickCommand {
   id: string;
@@ -54,7 +67,7 @@ export interface SubProject {
   name: string;
   path: string;
   stack: string[];
-  projectType: string;
+  projectType: ProjectType;
   detectedFiles: string[];
   git: ProjectGitInfo;
 }
@@ -151,4 +164,16 @@ export interface CatalogFilters {
 export interface ActionResult {
   ok: boolean;
   message: string;
+}
+
+export interface ToolIntegration {
+  id: string;
+  label: string;
+  category: ToolCategory;
+  brand: string;
+  installed: boolean;
+  launchMethod: LaunchMethod;
+  command: string | null;
+  executablePath: string | null;
+  reason: string | null;
 }

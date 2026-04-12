@@ -2,23 +2,15 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { DEFAULT_APP_STORE } from '../app/defaultStore';
 import { detectPlatform } from '../app/platform';
-import type { ActionResult, AppStore, Preferences, ProjectRecord, RootChildRule, RootFolder, RootFolderPreview } from '../app/types';
+import type { ActionResult, AppStore, Preferences, ProjectActionKind, ProjectRecord, RootChildRule, RootFolder, RootFolderPreview, ToolIntegration } from '../app/types';
 import { getComparablePath, getPathLeafName, normalizePath } from '../utils/paths';
 
 const STORAGE_KEY = 'project-hub-browser-store';
 
-type ProjectActionKind =
-  | 'openFinder'
-  | 'openCode'
-  | 'openTerminal'
-  | 'openClaude'
-  | 'openCodex'
-  | 'openLocalUrl'
-  | 'runQuickCommand';
-
 interface ProjectActionPayload {
   kind: ProjectActionKind;
   targetId?: string;
+  pathOverride?: string;
   language?: string;
 }
 
@@ -229,6 +221,48 @@ export async function inspectProjectPath(path: string): Promise<ProjectRecord> {
   }
 
   return invoke<ProjectRecord>('inspect_project_path', { path: normalizePath(path) });
+}
+
+export async function detectIntegrations(): Promise<ToolIntegration[]> {
+  if (!isTauriRuntime()) {
+    return [
+      {
+        id: 'fileManager',
+        label: 'File manager',
+        category: 'fileManager',
+        brand: 'fileManager',
+        installed: false,
+        launchMethod: 'system',
+        command: null,
+        executablePath: null,
+        reason: 'Desktop runtime required.',
+      },
+      {
+        id: 'terminal',
+        label: 'Terminal',
+        category: 'terminal',
+        brand: 'terminal',
+        installed: false,
+        launchMethod: 'system',
+        command: null,
+        executablePath: null,
+        reason: 'Desktop runtime required.',
+      },
+    ];
+  }
+
+  return invoke<ToolIntegration[]>('detect_integrations');
+}
+
+export async function authorizeDestructiveAction(language: string): Promise<ActionResult> {
+  if (!isTauriRuntime()) {
+    return {
+      ok: true,
+      message: 'Delete confirmation accepted.',
+    };
+  }
+
+  return invoke<ActionResult>('authorize_destructive_action', { language });
 }
 
 export async function deleteProject(projectId: string): Promise<AppStore> {

@@ -482,6 +482,56 @@ button:focus-visible {
   padding: 1.5rem;
 }
 
+.settings-tools {
+  grid-column: 1 / -1;
+}
+
+.tool-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.tool-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 2px solid var(--border);
+  background: var(--bg-elevated);
+  padding: 0.85rem;
+}
+
+.tool-row__identity,
+.tool-row__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.tool-row__identity > div,
+.tool-row__meta {
+  min-width: 0;
+}
+
+.tool-row__identity strong,
+.tool-row__identity span,
+.tool-row__meta span:last-child {
+  display: block;
+}
+
+.tool-row__meta {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.tool-row__meta .muted-copy {
+  overflow: hidden;
+  max-width: min(38vw, 32rem);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .project-card {
   padding: 1.1rem;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -638,7 +688,17 @@ button:focus-visible {
   gap: 0.45rem;
   border: 2px solid var(--border);
   background: var(--bg-soft);
+  color: var(--text);
   padding: 0.35rem 0.55rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.project-card__subpill:hover,
+.project-card__subpill:focus-visible {
+  background: var(--bg-elevated);
+  transform: translateY(-1px);
 }
 
 .project-card__subpill-name {
@@ -752,6 +812,17 @@ button:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
+}
+
+.list-card--button {
+  width: 100%;
+  cursor: pointer;
+}
+
+.list-card--button:hover,
+.list-card--button:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-lg);
 }
 
 .list-card__meta {
@@ -1149,6 +1220,10 @@ button:focus-visible {
 
 .modal--structure {
   width: min(1240px, 100%);
+}
+
+.modal--confirm {
+  width: min(560px, 100%);
 }
 
 .modal__header,

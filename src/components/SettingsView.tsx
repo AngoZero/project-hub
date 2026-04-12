@@ -1,12 +1,28 @@
+import { RefreshCcw } from 'lucide-react';
+import { isBrandKey } from '../app/brandRegistry';
 import { getLanguageLabel, getSortOptionLabel, useI18n } from '../app/i18n';
-import type { Preferences } from '../app/types';
+import type { Preferences, ToolIntegration } from '../app/types';
+import { BrandMark } from './BrandMark';
 
 interface SettingsViewProps {
   preferences: Preferences;
+  integrations: ToolIntegration[];
   onSave: (preferences: Preferences) => Promise<void>;
+  onRefreshIntegrations: () => Promise<void>;
 }
 
-export function SettingsView({ preferences, onSave }: SettingsViewProps) {
+function getToolCategoryLabel(integration: ToolIntegration, t: ReturnType<typeof useI18n>['t']): string {
+  const labelByCategory: Record<ToolIntegration['category'], Parameters<typeof t>[0]> = {
+    agent: 'toolCategoryAgent',
+    editor: 'toolCategoryEditor',
+    fileManager: 'toolCategoryFileManager',
+    terminal: 'toolCategoryTerminal',
+  };
+
+  return t(labelByCategory[integration.category]);
+}
+
+export function SettingsView({ preferences, integrations, onSave, onRefreshIntegrations }: SettingsViewProps) {
   const { language, t } = useI18n();
 
   return (
@@ -122,6 +138,40 @@ export function SettingsView({ preferences, onSave }: SettingsViewProps) {
             />
             <span>{t('settingsArchivedToggle')}</span>
           </label>
+        </article>
+
+        <article className="surface-card settings-tools">
+          <div className="surface-card__header">
+            <div>
+              <h3>{t('settingsTools')}</h3>
+              <p className="surface-card__description">{t('settingsToolsCopy')}</p>
+            </div>
+            <button type="button" className="button button--ghost" onClick={() => void onRefreshIntegrations()}>
+              <RefreshCcw size={16} />
+              {t('settingsToolsRefresh')}
+            </button>
+          </div>
+          <div className="tool-list">
+            {integrations.map((integration) => (
+              <div key={integration.id} className="tool-row">
+                <div className="tool-row__identity">
+                  <BrandMark brand={isBrandKey(integration.brand) ? integration.brand : 'api'} size={18} />
+                  <div>
+                    <strong>{integration.label}</strong>
+                    <span>{getToolCategoryLabel(integration, t)}</span>
+                  </div>
+                </div>
+                <div className="tool-row__meta">
+                  <span className={`badge ${integration.installed ? 'badge--active' : 'badge--paused'}`}>
+                    {integration.installed ? t('settingsToolInstalled') : t('settingsToolMissing')}
+                  </span>
+                  <span className="muted-copy">
+                    {integration.command ?? integration.executablePath ?? integration.reason ?? t('settingsToolSystem')}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
         </article>
       </div>
     </section>

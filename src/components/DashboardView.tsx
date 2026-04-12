@@ -1,6 +1,7 @@
 import { Clock3, FolderSync, Star, TerminalSquare } from 'lucide-react';
+import { isBrandKey } from '../app/brandRegistry';
 import { useI18n, getProjectStatusLabel } from '../app/i18n';
-import type { ProjectRecord } from '../app/types';
+import type { ProjectActionKind, ProjectRecord, ToolIntegration } from '../app/types';
 import { formatRelativeDate } from '../utils/formatters';
 import { BrandMark } from './BrandMark';
 import { TechnologyStack } from './TechnologyStack';
@@ -9,11 +10,13 @@ interface DashboardViewProps {
   projects: ProjectRecord[];
   rootCount: number;
   onSelect: (projectId: string) => void;
-  onAction: (projectId: string, kind: 'openTerminal' | 'openCode' | 'openClaude') => void;
+  onAction: (projectId: string, kind: ProjectActionKind, targetId?: string) => void;
+  integrations: ToolIntegration[];
 }
 
-export function DashboardView({ projects, rootCount, onSelect, onAction }: DashboardViewProps) {
+export function DashboardView({ projects, rootCount, onSelect, onAction, integrations }: DashboardViewProps) {
   const { language, t } = useI18n();
+  const quickTools = integrations.filter((integration) => integration.installed && (integration.category === 'editor' || integration.category === 'agent')).slice(0, 2);
   const favorites = projects.filter((project) => project.favorite).slice(0, 4);
   const recent = [...projects]
     .sort((left, right) => (Date.parse(right.lastAccessedAt ?? '') || 0) - (Date.parse(left.lastAccessedAt ?? '') || 0))
@@ -109,14 +112,12 @@ export function DashboardView({ projects, rootCount, onSelect, onAction }: Dashb
                 <button type="button" className="button button--ghost" onClick={() => onAction(project.id, 'openTerminal')}>
                   {t('actionTerminal')}
                 </button>
-                <button type="button" className="button button--ghost" onClick={() => onAction(project.id, 'openCode')}>
-                  <BrandMark brand="vscode" size={16} />
-                  VS Code
-                </button>
-                <button type="button" className="button button--ghost" onClick={() => onAction(project.id, 'openClaude')}>
-                  <BrandMark brand="claude" size={16} />
-                  Claude
-                </button>
+                {quickTools.map((integration) => (
+                  <button key={integration.id} type="button" className="button button--ghost" onClick={() => onAction(project.id, 'openIntegration', integration.id)}>
+                    <BrandMark brand={isBrandKey(integration.brand) ? integration.brand : 'api'} size={16} />
+                    {integration.label}
+                  </button>
+                ))}
               </div>
             </article>
           ))}

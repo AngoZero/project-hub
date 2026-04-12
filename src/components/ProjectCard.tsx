@@ -1,7 +1,8 @@
 import { Folder, Star, TerminalSquare } from 'lucide-react';
 import clsx from 'clsx';
+import { isBrandKey } from '../app/brandRegistry';
 import { getFileManagerLabel, getProjectStatusLabel, getProjectTypeLabel, useI18n } from '../app/i18n';
-import type { ProjectRecord } from '../app/types';
+import type { ProjectActionKind, ProjectRecord, ToolIntegration } from '../app/types';
 import { formatRelativeDate } from '../utils/formatters';
 import { BrandMark } from './BrandMark';
 import { TechnologyStack } from './TechnologyStack';
@@ -10,13 +11,16 @@ interface ProjectCardProps {
   project: ProjectRecord;
   isSelected: boolean;
   onSelect: (projectId: string) => void;
-  onAction: (projectId: string, kind: 'openTerminal' | 'openCode' | 'openFinder') => void;
+  onSelectSubProject: (parentProjectId: string, subProjectPath: string) => void;
+  onAction: (projectId: string, kind: ProjectActionKind, targetId?: string) => void;
+  integrations: ToolIntegration[];
 }
 
-export function ProjectCard({ project, isSelected, onSelect, onAction }: ProjectCardProps) {
+export function ProjectCard({ project, isSelected, onSelect, onSelectSubProject, onAction, integrations }: ProjectCardProps) {
   const { language, platform, t } = useI18n();
   const description = project.description || t('projectCardNoDescription');
   const fileManagerLabel = getFileManagerLabel(platform, t);
+  const primaryEditor = integrations.find((integration) => integration.installed && integration.category === 'editor');
 
   return (
     <article
@@ -51,9 +55,11 @@ export function ProjectCard({ project, isSelected, onSelect, onAction }: Project
                 <button type="button" onClick={(event) => { event.stopPropagation(); onAction(project.id, 'openFinder'); }} aria-label={t('projectCardOpenFileManagerAria', { name: project.name, manager: fileManagerLabel })}>
                   <Folder size={16} />
                 </button>
-                <button type="button" onClick={(event) => { event.stopPropagation(); onAction(project.id, 'openCode'); }} aria-label={t('projectCardOpenVsCodeAria', { name: project.name })}>
-                  <BrandMark brand="vscode" size={16} />
-                </button>
+                {primaryEditor ? (
+                  <button type="button" onClick={(event) => { event.stopPropagation(); onAction(project.id, 'openIntegration', primaryEditor.id); }} aria-label={t('projectCardOpenIntegrationAria', { name: project.name, tool: primaryEditor.label })}>
+                    <BrandMark brand={isBrandKey(primaryEditor.brand) ? primaryEditor.brand : 'api'} size={16} />
+                  </button>
+                ) : null}
                 <button type="button" onClick={(event) => { event.stopPropagation(); onAction(project.id, 'openTerminal'); }} aria-label={t('projectCardOpenTerminalAria', { name: project.name })}>
                   <TerminalSquare size={16} />
                 </button>
@@ -89,10 +95,19 @@ export function ProjectCard({ project, isSelected, onSelect, onAction }: Project
         {project.subProjects.length > 0 ? (
           <div className="project-card__subs">
             {project.subProjects.map((sub) => (
-              <div key={sub.path} className="project-card__subpill">
+              <button
+                key={sub.path}
+                type="button"
+                className="project-card__subpill"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelectSubProject(project.id, sub.path);
+                }}
+                aria-label={t('projectDetailOpenSubProjectAria', { name: sub.name })}
+              >
                 <span className="project-card__subpill-name">{sub.name}</span>
-                <TechnologyStack stack={sub.stack} size="sm" emptyLabel={getProjectTypeLabel(sub.projectType as typeof project.projectType, t)} />
-              </div>
+                <TechnologyStack stack={sub.stack} size="sm" emptyLabel={getProjectTypeLabel(sub.projectType, t)} />
+              </button>
             ))}
           </div>
         ) : null}

@@ -1,5 +1,8 @@
-use crate::types::{ActionResult, AppStore, ProjectActionPayload, ProjectRecord};
-use crate::utils::{applescript_escape, command_exists, shell_single_quote};
+use crate::{
+  integrations,
+  types::{ActionResult, AppStore, ProjectActionPayload, ProjectRecord, ToolIntegration},
+};
+use crate::utils::{applescript_escape, command_exists, comparable_path, shell_single_quote};
 use std::{
   process::{Command, Stdio},
 };
@@ -9,13 +12,15 @@ pub fn run_project_action(store: &mut AppStore, project_id: &str, action: Projec
   let Some(project) = store.projects.iter_mut().find(|project| project.id == project_id) else {
     return Err(message(language, "Project not found.", "Proyecto no encontrado."));
   };
+  let target_path = resolve_action_path(project, action.path_override.as_deref(), language)?;
 
   let result = match action.kind.as_str() {
-    "openFinder" => open_finder(project, language),
-    "openCode" => open_code(project, language),
-    "openTerminal" => open_terminal(project, language),
-    "openClaude" => open_tool(project, "claude", "Claude", language),
-    "openCodex" => open_tool(project, "codex", "Codex", language),
+    "openFinder" => open_finder(&target_path, language),
+    "openCode" => open_integration(&target_path, Some("vscode"), language),
+    "openTerminal" => open_terminal(&target_path, language),
+    "openClaude" => open_integration(&target_path, Some("claude"), language),
+    "openCodex" => open_integration(&target_path, Some("codex"), language),
+    "openIntegration" => open_integration(&target_path, action.target_id.as_deref(), language),
     "openLocalUrl" => open_local_url(project, action.target_id.as_deref(), language),
     "runQuickCommand" => run_quick_command(project, action.target_id.as_deref(), language),
     _ => Err(message(language, "Unsupported action.", "Acción no soportada.")),
@@ -23,6 +28,28 @@ pub fn run_project_action(store: &mut AppStore, project_id: &str, action: Projec
 
   project.last_accessed_at = Some(crate::utils::now_iso());
   Ok(ActionResult { ok: true, message: result })
+}
+
+fn resolve_action_path(project: &ProjectRecord, path_override: Option<&str>, language: &str) -> Result<String, String> {
+  let Some(path_override) = path_override else {
+    return Ok(project.path.clone());
+  };
+
+  let comparable_override = comparable_path(path_override);
+  if comparable_override == comparable_path(&project.path)
+    || project
+      .sub_projects
+      .iter()
+      .any(|sub_project| comparable_path(&sub_project.path) == comparable_override)
+  {
+    return Ok(path_override.into());
+  }
+
+  Err(message(
+    language,
+    "Path override is not part of this project.",
+    "La ruta alterna no pertenece a este proyecto.",
+  ))
 }
 
 fn message(language: &str, en: &str, es: &str) -> String {
@@ -33,16 +60,65 @@ fn message(language: &str, en: &str, es: &str) -> String {
   }
 }
 
-fn open_finder(project: &ProjectRecord, language: &str) -> Result<String, String> {
+pub fn authorize_destructive_action(language: &str) -> Result<ActionResult, String> {
   #[cfg(target_os = "macos")]
   {
-    spawn(Command::new("open").arg(&project.path))?;
+    let prompt = message(
+      language,
+      "Project Hub needs permission to delete this project entry.",
+      "Project Hub necesita permiso para eliminar esta entrada de proyecto.",
+    );
+    let script = format!(
+      "do shell script \"true\" with administrator privileges with prompt \"{}\"",
+      applescript_escape(&prompt)
+    );
+    run_osascript(&script)?;
+    return Ok(ActionResult {
+      ok: true,
+      message: message(language, "Delete authorized.", "Eliminación autorizada."),
+    });
+  }
+
+  #[cfg(target_os = "windows")]
+  {
+    let status = Command::new("powershell")
+      .arg("-NoProfile")
+      .arg("-Command")
+      .arg("Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile','-Command','exit 0'")
+      .status()
+      .map_err(|error| error.to_string())?;
+
+    if status.success() {
+      return Ok(ActionResult {
+        ok: true,
+        message: message(language, "Delete authorized.", "Eliminación autorizada."),
+      });
+    }
+
+    return Err(message(
+      language,
+      "System authorization was cancelled.",
+      "La autorización del sistema fue cancelada.",
+    ));
+  }
+
+  #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+  Ok(ActionResult {
+    ok: true,
+    message: message(language, "Delete confirmation accepted.", "Confirmación aceptada."),
+  })
+}
+
+fn open_finder(path: &str, language: &str) -> Result<String, String> {
+  #[cfg(target_os = "macos")]
+  {
+    spawn(Command::new("open").arg(path))?;
     return Ok(message(language, "Opened in Finder.", "Abierto en Finder."));
   }
 
   #[cfg(target_os = "windows")]
   {
-    spawn(Command::new("explorer").arg(&project.path))?;
+    spawn(Command::new("explorer").arg(path))?;
     return Ok(message(language, "Opened in Explorer.", "Abierto en Explorer."));
   }
 
@@ -54,35 +130,15 @@ fn open_finder(project: &ProjectRecord, language: &str) -> Result<String, String
   ))
 }
 
-fn open_code(project: &ProjectRecord, language: &str) -> Result<String, String> {
-  if command_exists("code") {
-    spawn(Command::new("code").arg(&project.path))?;
-    return Ok(message(language, "Opened in VS Code.", "Abierto en VS Code."));
-  }
-
+fn open_terminal(path: &str, language: &str) -> Result<String, String> {
   #[cfg(target_os = "macos")]
   {
-    spawn(Command::new("open").arg("-a").arg("Visual Studio Code").arg(&project.path))?;
-    return Ok(message(language, "Opened in VS Code.", "Abierto en VS Code."));
-  }
-
-  #[cfg(not(target_os = "macos"))]
-  Err(message(
-    language,
-    "VS Code was not found in PATH or the default macOS application registry.",
-    "VS Code no se encontró en PATH ni en el registro por defecto de aplicaciones de macOS.",
-  ))
-}
-
-fn open_terminal(project: &ProjectRecord, language: &str) -> Result<String, String> {
-  #[cfg(target_os = "macos")]
-  {
-    return open_terminal_macos(&project.path, None, language);
+    return open_terminal_macos(path, None, language);
   }
 
   #[cfg(target_os = "windows")]
   {
-    return open_terminal_windows(&project.path, None, language);
+    return open_terminal_windows(path, None, language);
   }
 
   #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -93,7 +149,83 @@ fn open_terminal(project: &ProjectRecord, language: &str) -> Result<String, Stri
   ))
 }
 
-fn open_tool(project: &ProjectRecord, command: &str, label: &str, language: &str) -> Result<String, String> {
+fn open_integration(path: &str, integration_id: Option<&str>, language: &str) -> Result<String, String> {
+  let Some(integration_id) = integration_id else {
+    return Err(message(language, "Tool id is required.", "Se requiere el id de la herramienta."));
+  };
+
+  if integration_id == "terminal" {
+    return open_terminal(path, language);
+  }
+
+  if integration_id == "fileManager" {
+    return open_finder(path, language);
+  }
+
+  let Some(integration) = integrations::find_installed_integration(integration_id) else {
+    return Err(if language.starts_with("es") {
+      format!("{} no está disponible en este equipo.", integration_id)
+    } else {
+      format!("{integration_id} is not available on this machine.")
+    });
+  };
+
+  match integration.category.as_str() {
+    "editor" => open_editor(path, &integration, language),
+    "agent" => {
+      let Some(command) = integration.command.as_deref() else {
+        return Err(if language.starts_with("es") {
+          format!("{} no tiene un comando ejecutable disponible.", integration.label)
+        } else {
+          format!("{} does not expose an executable command.", integration.label)
+        });
+      };
+      open_tool(path, command, &integration.label, language)
+    }
+    _ => Err(message(language, "Unsupported tool category.", "Categoría de herramienta no soportada.")),
+  }
+}
+
+fn open_editor(project_path: &str, integration: &ToolIntegration, language: &str) -> Result<String, String> {
+  if let Some(command) = integration.command.as_deref() {
+    spawn(Command::new(command).arg(project_path))?;
+    return Ok(if language.starts_with("es") {
+      format!("Abierto en {}.", integration.label)
+    } else {
+      format!("Opened in {}.", integration.label)
+    });
+  }
+
+  if let Some(path) = integration.executable_path.as_deref() {
+    #[cfg(target_os = "macos")]
+    {
+      spawn(Command::new("open").arg("-a").arg(path).arg(project_path))?;
+      return Ok(if language.starts_with("es") {
+        format!("Abierto en {}.", integration.label)
+      } else {
+        format!("Opened in {}.", integration.label)
+      });
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+      spawn(Command::new(path).arg(project_path))?;
+      return Ok(if language.starts_with("es") {
+        format!("Abierto en {}.", integration.label)
+      } else {
+        format!("Opened in {}.", integration.label)
+      });
+    }
+  }
+
+  Err(if language.starts_with("es") {
+    format!("{} no tiene una forma de apertura disponible.", integration.label)
+  } else {
+    format!("{} does not have an available launch method.", integration.label)
+  })
+}
+
+fn open_tool(project_path: &str, command: &str, label: &str, language: &str) -> Result<String, String> {
   if !command_exists(command) {
     return Err(if language.starts_with("es") {
       format!("{label} no está disponible en PATH.")
@@ -104,12 +236,12 @@ fn open_tool(project: &ProjectRecord, command: &str, label: &str, language: &str
 
   #[cfg(target_os = "macos")]
   {
-    return open_terminal_macos(&project.path, Some(command), language);
+    return open_terminal_macos(project_path, Some(command), language);
   }
 
   #[cfg(target_os = "windows")]
   {
-    return open_terminal_windows(&project.path, Some(command), language);
+    return open_terminal_windows(project_path, Some(command), language);
   }
 
   #[cfg(not(any(target_os = "macos", target_os = "windows")))]

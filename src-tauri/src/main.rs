@@ -1,4 +1,5 @@
 mod commands;
+mod integrations;
 mod project_actions;
 mod scanner;
 mod storage;
@@ -18,6 +19,8 @@ fn main() {
       commands::scan_projects,
       commands::preview_root_folder,
       commands::inspect_project_path,
+      commands::authorize_destructive_action,
+      commands::detect_integrations,
       commands::save_project,
       commands::delete_project,
       commands::save_root_folder,

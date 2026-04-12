@@ -1,9 +1,11 @@
-import { Boxes, type LucideIcon } from 'lucide-react';
+import { Bot, Boxes, FolderOpen, Orbit, TerminalSquare, type LucideIcon } from 'lucide-react';
 import {
   siAstro,
+  siCursor,
   siDocker,
   siDotnet,
   siFlutter,
+  siGooglegemini,
   siLaravel,
   siNextdotjs,
   siNodedotjs,
@@ -18,17 +20,23 @@ import vscodeLogo from '../assets/brands/vscode.png';
 
 export type BrandKey =
   | 'api'
+  | 'antigravity'
   | 'astro'
   | 'claude'
   | 'codex'
+  | 'cursor'
   | 'docker'
   | 'dotnet'
+  | 'fileManager'
   | 'flutter'
+  | 'gemini'
   | 'laravel'
   | 'nextjs'
   | 'node'
+  | 'opencode'
   | 'react'
   | 'rust'
+  | 'terminal'
   | 'vite'
   | 'vscode';
 
@@ -68,6 +76,14 @@ export const BRAND_REGISTRY: Record<BrandKey, BrandDefinition> = {
     sourceKind: 'custom',
     sourceUrl: 'internal:fallback',
   },
+  antigravity: {
+    kind: 'lucide',
+    icon: Orbit,
+    label: 'Antigravity',
+    mode: 'current',
+    sourceKind: 'custom',
+    sourceUrl: 'internal:fallback',
+  },
   astro: {
     kind: 'simple',
     icon: siAstro,
@@ -75,6 +91,14 @@ export const BRAND_REGISTRY: Record<BrandKey, BrandDefinition> = {
     mode: 'brand',
     sourceKind: 'fallback',
     sourceUrl: 'https://simpleicons.org/?q=astro',
+  },
+  cursor: {
+    kind: 'simple',
+    icon: siCursor,
+    label: 'Cursor',
+    mode: 'current',
+    sourceKind: 'fallback',
+    sourceUrl: 'https://simpleicons.org/?q=cursor',
   },
   claude: {
     kind: 'image',
@@ -108,6 +132,14 @@ export const BRAND_REGISTRY: Record<BrandKey, BrandDefinition> = {
     sourceKind: 'fallback',
     sourceUrl: 'https://simpleicons.org/?q=dotnet',
   },
+  fileManager: {
+    kind: 'lucide',
+    icon: FolderOpen,
+    label: 'File manager',
+    mode: 'current',
+    sourceKind: 'custom',
+    sourceUrl: 'internal:fallback',
+  },
   flutter: {
     kind: 'simple',
     icon: siFlutter,
@@ -115,6 +147,14 @@ export const BRAND_REGISTRY: Record<BrandKey, BrandDefinition> = {
     mode: 'brand',
     sourceKind: 'fallback',
     sourceUrl: 'https://simpleicons.org/?q=flutter',
+  },
+  gemini: {
+    kind: 'simple',
+    icon: siGooglegemini,
+    label: 'Gemini',
+    mode: 'brand',
+    sourceKind: 'fallback',
+    sourceUrl: 'https://simpleicons.org/?q=gemini',
   },
   laravel: {
     kind: 'simple',
@@ -140,6 +180,14 @@ export const BRAND_REGISTRY: Record<BrandKey, BrandDefinition> = {
     sourceKind: 'fallback',
     sourceUrl: 'https://simpleicons.org/?q=node.js',
   },
+  opencode: {
+    kind: 'lucide',
+    icon: Bot,
+    label: 'OpenCode',
+    mode: 'current',
+    sourceKind: 'custom',
+    sourceUrl: 'internal:fallback',
+  },
   react: {
     kind: 'simple',
     icon: siReact,
@@ -155,6 +203,14 @@ export const BRAND_REGISTRY: Record<BrandKey, BrandDefinition> = {
     mode: 'current',
     sourceKind: 'fallback',
     sourceUrl: 'https://simpleicons.org/?q=rust',
+  },
+  terminal: {
+    kind: 'lucide',
+    icon: TerminalSquare,
+    label: 'Terminal',
+    mode: 'current',
+    sourceKind: 'custom',
+    sourceUrl: 'internal:fallback',
   },
   vite: {
     kind: 'simple',
@@ -191,6 +247,10 @@ const STACK_BRAND_BY_NAME: Record<string, BrandKey> = {
 
 export function getBrandByKey(key: BrandKey): BrandDefinition {
   return BRAND_REGISTRY[key];
+}
+
+export function isBrandKey(value: string): value is BrandKey {
+  return value in BRAND_REGISTRY;
 }
 
 export function getStackBrandKey(stackName: string): BrandKey | null {
