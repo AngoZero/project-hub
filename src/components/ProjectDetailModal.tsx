@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import type { ProjectActionKind, ProjectRecord, SubProject, ToolIntegration } from '../app/types';
+import type { ProjectActionKind, ProjectRecord, QuickCommand, SubProject, ToolIntegration } from '../app/types';
 import { ProjectDetail } from './ProjectDetail';
 
 interface ProjectDetailModalProps {
@@ -11,10 +11,11 @@ interface ProjectDetailModalProps {
   onDelete: (projectId: string) => void;
   onAction: (projectId: string, kind: ProjectActionKind, targetId?: string, pathOverride?: string) => void;
   onSelectSubProject: (parentProjectId: string, subProjectPath: string) => void;
+  onSaveSubProjectCommands: (parentProjectId: string, subProjectPath: string, quickCommands: QuickCommand[]) => Promise<void>;
   integrations: ToolIntegration[];
 }
 
-export function ProjectDetailModal({ project, subProject = null, isOpen, onClose, onEdit, onDelete, onAction, onSelectSubProject, integrations }: ProjectDetailModalProps) {
+export function ProjectDetailModal({ project, subProject = null, isOpen, onClose, onEdit, onDelete, onAction, onSelectSubProject, onSaveSubProjectCommands, integrations }: ProjectDetailModalProps) {
   useEffect(() => {
     if (!isOpen) {
       return undefined;
@@ -59,6 +60,7 @@ export function ProjectDetailModal({ project, subProject = null, isOpen, onClose
             onDelete={onDelete}
             onAction={onAction}
             onSelectSubProject={onSelectSubProject}
+            onSaveSubProjectCommands={onSaveSubProjectCommands}
             integrations={integrations}
             onClose={onClose}
           />

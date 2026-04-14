@@ -9,24 +9,27 @@ use std::{
 
 pub fn run_project_action(store: &mut AppStore, project_id: &str, action: ProjectActionPayload) -> Result<ActionResult, String> {
   let language = action.language.as_str();
-  let Some(project) = store.projects.iter_mut().find(|project| project.id == project_id) else {
+  let Some(project_index) = store.projects.iter().position(|project| project.id == project_id) else {
     return Err(message(language, "Project not found.", "Proyecto no encontrado."));
   };
+  let project = &store.projects[project_index];
   let target_path = resolve_action_path(project, action.path_override.as_deref(), language)?;
 
   let result = match action.kind.as_str() {
     "openFinder" => open_finder(&target_path, language),
-    "openCode" => open_integration(&target_path, Some("vscode"), language),
+    "openCode" => open_integration(store, &target_path, Some("vscode"), language),
     "openTerminal" => open_terminal(&target_path, language),
-    "openClaude" => open_integration(&target_path, Some("claude"), language),
-    "openCodex" => open_integration(&target_path, Some("codex"), language),
-    "openIntegration" => open_integration(&target_path, action.target_id.as_deref(), language),
+    "openClaude" => open_integration(store, &target_path, Some("claude"), language),
+    "openCodex" => open_integration(store, &target_path, Some("codex"), language),
+    "openIntegration" => open_integration(store, &target_path, action.target_id.as_deref(), language),
     "openLocalUrl" => open_local_url(project, action.target_id.as_deref(), language),
-    "runQuickCommand" => run_quick_command(project, action.target_id.as_deref(), language),
+    "runQuickCommand" => run_quick_command(project, action.target_id.as_deref(), &target_path, language),
     _ => Err(message(language, "Unsupported action.", "Acción no soportada.")),
   }?;
 
-  project.last_accessed_at = Some(crate::utils::now_iso());
+  if let Some(project) = store.projects.get_mut(project_index) {
+    project.last_accessed_at = Some(crate::utils::now_iso());
+  }
   Ok(ActionResult { ok: true, message: result })
 }
 
@@ -149,7 +152,7 @@ fn open_terminal(path: &str, language: &str) -> Result<String, String> {
   ))
 }
 
-fn open_integration(path: &str, integration_id: Option<&str>, language: &str) -> Result<String, String> {
+fn open_integration(store: &AppStore, path: &str, integration_id: Option<&str>, language: &str) -> Result<String, String> {
   let Some(integration_id) = integration_id else {
     return Err(message(language, "Tool id is required.", "Se requiere el id de la herramienta."));
   };
@@ -162,7 +165,7 @@ fn open_integration(path: &str, integration_id: Option<&str>, language: &str) ->
     return open_finder(path, language);
   }
 
-  let Some(integration) = integrations::find_installed_integration(integration_id) else {
+  let Some(integration) = integrations::find_installed_integration(&store.tool_overrides, integration_id) else {
     return Err(if language.starts_with("es") {
       format!("{} no está disponible en este equipo.", integration_id)
     } else {
@@ -173,11 +176,12 @@ fn open_integration(path: &str, integration_id: Option<&str>, language: &str) ->
   match integration.category.as_str() {
     "editor" => open_editor(path, &integration, language),
     "agent" => {
-      let Some(command) = integration.command.as_deref() else {
+      let command = integration.command.as_deref().or(integration.executable_path.as_deref());
+      let Some(command) = command else {
         return Err(if language.starts_with("es") {
-          format!("{} no tiene un comando ejecutable disponible.", integration.label)
+          format!("{} no tiene una ruta ejecutable disponible.", integration.label)
         } else {
-          format!("{} does not expose an executable command.", integration.label)
+          format!("{} does not expose an executable launch target.", integration.label)
         });
       };
       open_tool(path, command, &integration.label, language)
@@ -289,23 +293,34 @@ fn open_local_url(project: &ProjectRecord, target_id: Option<&str>, language: &s
   ))
 }
 
-fn run_quick_command(project: &ProjectRecord, target_id: Option<&str>, language: &str) -> Result<String, String> {
+fn run_quick_command(project: &ProjectRecord, target_id: Option<&str>, target_path: &str, language: &str) -> Result<String, String> {
   let Some(target_id) = target_id else {
     return Err(message(language, "Quick command id is required.", "Se requiere el id del comando rápido."));
   };
 
-  let Some(command) = project.quick_commands.iter().find(|item| item.id == target_id) else {
+  let commands = if comparable_path(target_path) == comparable_path(&project.path) {
+    &project.quick_commands
+  } else {
+    project
+      .sub_projects
+      .iter()
+      .find(|sub_project| comparable_path(&sub_project.path) == comparable_path(target_path))
+      .map(|sub_project| &sub_project.quick_commands)
+      .ok_or_else(|| message(language, "Quick command path is not part of this project.", "La ruta del comando no pertenece a este proyecto."))?
+  };
+
+  let Some(command) = commands.iter().find(|item| item.id == target_id) else {
     return Err(message(language, "Quick command not found.", "No se encontró el comando rápido."));
   };
 
   #[cfg(target_os = "macos")]
   {
-    return open_terminal_macos(&project.path, Some(&command.command), language);
+    return open_terminal_macos(target_path, Some(&command.command), language);
   }
 
   #[cfg(target_os = "windows")]
   {
-    return open_terminal_windows(&project.path, Some(&command.command), language);
+    return open_terminal_windows(target_path, Some(&command.command), language);
   }
 
   #[cfg(not(any(target_os = "macos", target_os = "windows")))]

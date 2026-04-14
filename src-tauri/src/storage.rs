@@ -1,4 +1,4 @@
-use crate::types::{AppStore, ProjectRecord, RootChildRule, RootFolder};
+use crate::types::{AppStore, ProjectRecord, QuickCommand, RootChildRule, RootFolder, ToolOverride};
 use crate::utils::{comparable_path, is_absolute_path, make_id, normalize_path, now_iso, sanitize_list};
 use std::{
   fs,
@@ -26,7 +26,8 @@ pub fn load_store(app: &AppHandle) -> Result<AppStore, String> {
   }
 
   let raw = fs::read_to_string(path).map_err(|error| error.to_string())?;
-  let store = serde_json::from_str::<AppStore>(&raw).map_err(|error| error.to_string())?;
+  let mut store = serde_json::from_str::<AppStore>(&raw).map_err(|error| error.to_string())?;
+  store.version = AppStore::default().version;
   Ok(store)
 }
 
@@ -70,10 +71,9 @@ pub fn sanitize_project(project: &ProjectRecord) -> Result<ProjectRecord, String
     return Err("Project name is required.".into());
   }
 
-  for command in &project.quick_commands {
-    if command.command.contains('\n') || command.command.trim().is_empty() {
-      return Err("Quick commands must be single-line shell commands.".into());
-    }
+  sanitize_quick_commands(&project.quick_commands)?;
+  for sub_project in &project.sub_projects {
+    sanitize_quick_commands(&sub_project.quick_commands)?;
   }
 
   Ok(ProjectRecord {
@@ -115,6 +115,42 @@ pub fn sanitize_project(project: &ProjectRecord) -> Result<ProjectRecord, String
   })
 }
 
+pub fn sanitize_tool_overrides(overrides: &[ToolOverride]) -> Vec<ToolOverride> {
+  let mut cleaned: Vec<ToolOverride> = overrides
+    .iter()
+    .filter_map(|override_item| {
+      let tool_id = override_item.tool_id.trim().to_string();
+      if tool_id.is_empty() {
+        return None;
+      }
+
+      let launch_method = match override_item.launch_method.as_str() {
+        "command" | "executable" => override_item.launch_method.clone(),
+        _ => return None,
+      };
+
+      let command = override_item.command.as_ref().map(|value| value.trim().to_string()).filter(|value| !value.is_empty());
+      let executable_path = override_item
+        .executable_path
+        .as_ref()
+        .map(|value| normalize_path(value))
+        .filter(|value| !value.is_empty());
+
+      Some(ToolOverride {
+        tool_id,
+        enabled: override_item.enabled,
+        launch_method,
+        command,
+        executable_path,
+      })
+    })
+    .collect();
+
+  cleaned.sort_by(|left, right| left.tool_id.cmp(&right.tool_id));
+  cleaned.dedup_by(|left, right| left.tool_id == right.tool_id);
+  cleaned
+}
+
 pub fn has_project_with_path(store: &AppStore, path: &str, current_id: &str) -> bool {
   let normalized = comparable_path(path);
   store
@@ -144,4 +180,14 @@ fn sanitize_root_child_rules(rules: &[RootChildRule]) -> Vec<RootChildRule> {
   cleaned.sort_by(|left, right| comparable_path(&left.path).cmp(&comparable_path(&right.path)));
   cleaned.dedup_by(|left, right| comparable_path(&left.path) == comparable_path(&right.path));
   cleaned
+}
+
+fn sanitize_quick_commands(commands: &[QuickCommand]) -> Result<(), String> {
+  for command in commands {
+    if command.command.contains('\n') || command.command.trim().is_empty() {
+      return Err("Quick commands must be single-line shell commands.".into());
+    }
+  }
+
+  Ok(())
 }

@@ -225,7 +225,7 @@ fn merge_scanned_project(existing: &ProjectRecord, scanned: ProjectRecord) -> Pr
     git: scanned.git.clone(),
     path_exists: scanned.path_exists,
     workspace_id: scanned.workspace_id.clone(),
-    sub_projects: scanned.sub_projects.clone(),
+    sub_projects: merge_sub_projects(&existing.sub_projects, &scanned.sub_projects),
   }
 }
 
@@ -333,6 +333,7 @@ fn build_sub_project(path: &Path, entries: &[PathBuf]) -> SubProject {
     project_type: detection.project_type,
     detected_files: markers,
     git: detect_git(path),
+    quick_commands: Vec::new(),
   }
 }
 
@@ -751,4 +752,30 @@ fn parse_head_branch(raw: String) -> Option<String> {
   } else {
     Some("detached".into())
   }
+}
+
+fn merge_sub_projects(existing: &[SubProject], scanned: &[SubProject]) -> Vec<SubProject> {
+  let existing_by_path: HashMap<String, &SubProject> = existing
+    .iter()
+    .map(|sub_project| (comparable_path(&sub_project.path), sub_project))
+    .collect();
+
+  scanned
+    .iter()
+    .map(|sub_project| {
+      if let Some(existing_sub_project) = existing_by_path.get(&comparable_path(&sub_project.path)) {
+        SubProject {
+          name: sub_project.name.clone(),
+          path: sub_project.path.clone(),
+          stack: sub_project.stack.clone(),
+          project_type: sub_project.project_type.clone(),
+          detected_files: sub_project.detected_files.clone(),
+          git: sub_project.git.clone(),
+          quick_commands: existing_sub_project.quick_commands.clone(),
+        }
+      } else {
+        sub_project.clone()
+      }
+    })
+    .collect()
 }

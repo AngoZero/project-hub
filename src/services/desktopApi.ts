@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { DEFAULT_APP_STORE } from '../app/defaultStore';
 import { detectPlatform } from '../app/platform';
-import type { ActionResult, AppStore, Preferences, ProjectActionKind, ProjectRecord, RootChildRule, RootFolder, RootFolderPreview, ToolIntegration } from '../app/types';
+import type { ActionResult, AppStore, Preferences, ProjectActionKind, ProjectRecord, RootChildRule, RootFolder, RootFolderPreview, ToolIntegration, ToolOverride } from '../app/types';
 import { getComparablePath, getPathLeafName, normalizePath } from '../utils/paths';
 
 const STORAGE_KEY = 'project-hub-browser-store';
@@ -31,6 +31,7 @@ function normalizeStore(store: AppStore): AppStore {
 
   return {
     ...store,
+    version: DEFAULT_APP_STORE.version,
     roots: store.roots.map((root) => ({
       ...root,
       childRules: (root.childRules ?? []).map((rule) => ({
@@ -49,7 +50,15 @@ function normalizeStore(store: AppStore): AppStore {
       detectedFiles: [...project.detectedFiles],
       notes: { ...project.notes },
       git: { ...project.git },
+      subProjects: (project.subProjects ?? []).map((subProject) => ({
+        ...subProject,
+        stack: [...subProject.stack],
+        detectedFiles: [...subProject.detectedFiles],
+        git: { ...subProject.git },
+        quickCommands: (subProject.quickCommands ?? []).map((item) => ({ ...item })),
+      })),
     })),
+    toolOverrides: (store.toolOverrides ?? []).map((override) => ({ ...override })),
     preferences: normalizedPreferences,
   };
 }
@@ -232,9 +241,12 @@ export async function detectIntegrations(): Promise<ToolIntegration[]> {
         category: 'fileManager',
         brand: 'fileManager',
         installed: false,
+        source: 'system',
         launchMethod: 'system',
         command: null,
         executablePath: null,
+        detectedCommand: null,
+        detectedExecutablePath: null,
         reason: 'Desktop runtime required.',
       },
       {
@@ -243,9 +255,12 @@ export async function detectIntegrations(): Promise<ToolIntegration[]> {
         category: 'terminal',
         brand: 'terminal',
         installed: false,
+        source: 'system',
         launchMethod: 'system',
         command: null,
         executablePath: null,
+        detectedCommand: null,
+        detectedExecutablePath: null,
         reason: 'Desktop runtime required.',
       },
     ];
@@ -325,6 +340,18 @@ export async function savePreferences(preferences: Preferences): Promise<AppStor
   }
 
   return normalizeStore(await invoke<AppStore>('save_preferences', { preferences }));
+}
+
+export async function saveToolOverrides(toolOverrides: ToolOverride[]): Promise<AppStore> {
+  if (!isTauriRuntime()) {
+    const store = loadBrowserStore();
+    return saveBrowserStore({
+      ...store,
+      toolOverrides,
+    });
+  }
+
+  return normalizeStore(await invoke<AppStore>('save_tool_overrides', { toolOverrides }));
 }
 
 export async function runProjectAction(projectId: string, action: ProjectActionPayload): Promise<ActionResult> {

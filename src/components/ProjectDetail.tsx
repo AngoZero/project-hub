@@ -1,8 +1,10 @@
-import { Copy, ExternalLink, FolderOpen, PenSquare, Play, TerminalSquare, Trash2, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Copy, ExternalLink, FolderOpen, PenSquare, Play, Plus, TerminalSquare, Trash2, X } from 'lucide-react';
 import { isBrandKey } from '../app/brandRegistry';
 import { getFileManagerLabel, getProjectStatusLabel, getProjectTypeLabel, useI18n } from '../app/i18n';
-import type { ProjectActionKind, ProjectRecord, SubProject, ToolIntegration } from '../app/types';
+import type { ProjectActionKind, ProjectRecord, QuickCommand, SubProject, ToolIntegration } from '../app/types';
 import { formatRelativeDate } from '../utils/formatters';
+import { createId } from '../utils/formatters';
 import { BrandMark } from './BrandMark';
 import { TechnologyStack } from './TechnologyStack';
 
@@ -15,6 +17,7 @@ interface ProjectDetailProps {
   onDelete: (projectId: string) => void;
   onAction: (projectId: string, kind: ProjectActionKind, targetId?: string, pathOverride?: string) => void;
   onSelectSubProject: (parentProjectId: string, subProjectPath: string) => void;
+  onSaveSubProjectCommands: (parentProjectId: string, subProjectPath: string, quickCommands: QuickCommand[]) => Promise<void>;
   integrations: ToolIntegration[];
 }
 
@@ -27,6 +30,7 @@ export function ProjectDetail({
   onDelete,
   onAction,
   onSelectSubProject,
+  onSaveSubProjectCommands,
   integrations,
 }: ProjectDetailProps) {
   const { language, platform, t } = useI18n();
@@ -34,6 +38,12 @@ export function ProjectDetail({
   const launchpadIntegrations = integrations.filter((integration) => {
     return integration.installed && (integration.category === 'editor' || integration.category === 'agent');
   });
+  const [draftCommands, setDraftCommands] = useState<QuickCommand[]>([]);
+  const [isSavingSubProjectCommands, setIsSavingSubProjectCommands] = useState(false);
+
+  useEffect(() => {
+    setDraftCommands(subProject?.quickCommands ?? []);
+  }, [project?.id, subProject?.path, subProject?.quickCommands]);
 
   if (!project) {
     return (
@@ -45,8 +55,24 @@ export function ProjectDetail({
   }
 
   const isSubProject = Boolean(subProject);
+  const projectId = project.id;
   const target = subProject ?? project;
   const actionPathOverride = isSubProject ? target.path : undefined;
+  const subProjectCommands = subProject?.quickCommands ?? [];
+  const hasInvalidSubProjectCommands = draftCommands.some((command) => !command.name.trim() || !command.command.trim());
+
+  async function handleSaveSubProjectCommands(): Promise<void> {
+    if (!subProject) {
+      return;
+    }
+
+    setIsSavingSubProjectCommands(true);
+    try {
+      await onSaveSubProjectCommands(projectId, subProject.path, draftCommands);
+    } finally {
+      setIsSavingSubProjectCommands(false);
+    }
+  }
 
   return (
     <section className={`detail-panel ${isModal ? 'detail-panel--modal' : ''}`}>
@@ -86,17 +112,17 @@ export function ProjectDetail({
       <div className="detail-panel__group">
         <h3>{t('projectDetailLaunchpad')}</h3>
         <div className="button-row">
-          <button type="button" className="button button--primary" onClick={() => onAction(project.id, 'openTerminal', undefined, actionPathOverride)}>
+          <button type="button" className="button button--primary" onClick={() => onAction(projectId, 'openTerminal', undefined, actionPathOverride)}>
             <TerminalSquare size={16} />
             {t('actionOpenTerminal')}
           </button>
           {launchpadIntegrations.map((integration) => (
-            <button key={integration.id} type="button" className="button button--ghost" onClick={() => onAction(project.id, 'openIntegration', integration.id, actionPathOverride)}>
+            <button key={integration.id} type="button" className="button button--ghost" onClick={() => onAction(projectId, 'openIntegration', integration.id, actionPathOverride)}>
               <BrandMark brand={isBrandKey(integration.brand) ? integration.brand : 'api'} size={16} />
               {t('actionOpenIntegration', { name: integration.label })}
             </button>
           ))}
-          <button type="button" className="button button--ghost" onClick={() => onAction(project.id, 'openFinder', undefined, actionPathOverride)}>
+          <button type="button" className="button button--ghost" onClick={() => onAction(projectId, 'openFinder', undefined, actionPathOverride)}>
             <FolderOpen size={16} />
             {t('actionOpenFileManager', { manager: fileManagerLabel })}
           </button>
@@ -154,7 +180,7 @@ export function ProjectDetail({
             <div className="stack-list">
               {project.localUrls.length > 0 ? (
                 project.localUrls.map((item) => (
-                  <button key={item.id} type="button" className="list-action" onClick={() => onAction(project.id, 'openLocalUrl', item.id)}>
+                  <button key={item.id} type="button" className="list-action" onClick={() => onAction(projectId, 'openLocalUrl', item.id)}>
                     <div>
                       <strong>{item.label}</strong>
                       <span>{item.url}</span>
@@ -175,7 +201,7 @@ export function ProjectDetail({
             <div className="stack-list">
               {project.quickCommands.length > 0 ? (
                 project.quickCommands.map((command) => (
-                  <button key={command.id} type="button" className="list-action" onClick={() => onAction(project.id, 'runQuickCommand', command.id)}>
+                  <button key={command.id} type="button" className="list-action" onClick={() => onAction(projectId, 'runQuickCommand', command.id)}>
                     <div>
                       <strong>{command.name}</strong>
                       <span>{command.command}</span>
@@ -189,14 +215,88 @@ export function ProjectDetail({
             </div>
           </section>
         </>
-      ) : null}
+      ) : (
+        <section className="surface-card">
+          <div className="surface-card__header">
+            <div>
+              <h3>{t('projectDetailQuickCommands')}</h3>
+              <p className="surface-card__description">{t('projectDetailSubProjectCommandsCopy')}</p>
+            </div>
+            <button
+              type="button"
+              className="button button--ghost"
+              onClick={() => setDraftCommands((current) => [...current, { id: createId('command'), name: '', command: '', description: '' }])}
+            >
+              <Plus size={16} />
+              {t('projectDetailAddSubProjectCommand')}
+            </button>
+          </div>
+          <div className="stack-list">
+            {subProjectCommands.length > 0 ? (
+              subProjectCommands.map((command) => (
+                <button key={command.id} type="button" className="list-action" onClick={() => onAction(projectId, 'runQuickCommand', command.id, actionPathOverride)}>
+                  <div>
+                    <strong>{command.name}</strong>
+                    <span>{command.command}</span>
+                  </div>
+                  <Play size={16} />
+                </button>
+              ))
+            ) : (
+              <p className="muted-copy">{t('projectDetailNoQuickCommands')}</p>
+            )}
+          </div>
+          <div className="modal-stack">
+            {draftCommands.map((command, index) => (
+              <div key={command.id} className="list-editor">
+                <input
+                  value={command.name}
+                  onChange={(event) => setDraftCommands((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, name: event.target.value } : item)))}
+                  placeholder={t('projectFormCommandNamePlaceholder')}
+                />
+                <input
+                  value={command.command}
+                  onChange={(event) => setDraftCommands((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, command: event.target.value } : item)))}
+                  placeholder={t('projectFormCommandPlaceholder')}
+                />
+                <input
+                  value={command.description}
+                  onChange={(event) => setDraftCommands((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, description: event.target.value } : item)))}
+                  placeholder={t('projectFormCommandDescriptionPlaceholder')}
+                />
+                <button type="button" className="icon-button" onClick={() => setDraftCommands((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label={t('projectFormRemoveCommand')}>
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="button-row">
+            <button
+              type="button"
+              className="button button--primary"
+              onClick={() => void handleSaveSubProjectCommands()}
+              disabled={hasInvalidSubProjectCommands || isSavingSubProjectCommands}
+            >
+              {t('projectDetailSaveSubProjectCommands')}
+            </button>
+            <button
+              type="button"
+              className="button button--ghost"
+              onClick={() => setDraftCommands(subProjectCommands)}
+              disabled={isSavingSubProjectCommands}
+            >
+              {t('projectDetailResetSubProjectCommands')}
+            </button>
+          </div>
+        </section>
+      )}
 
       {!isSubProject && project.subProjects.length > 0 ? (
         <section className="surface-card">
           <h3>{t('projectDetailSubProjects')}</h3>
           <div className="stack-list">
             {project.subProjects.map((sub) => (
-              <button key={sub.path} type="button" className="list-card list-card--button" onClick={() => onSelectSubProject(project.id, sub.path)} aria-label={t('projectDetailOpenSubProjectAria', { name: sub.name })}>
+              <button key={sub.path} type="button" className="list-card list-card--button" onClick={() => onSelectSubProject(projectId, sub.path)} aria-label={t('projectDetailOpenSubProjectAria', { name: sub.name })}>
                 <div>
                   <strong>{sub.name}</strong>
                   <div className="list-card__stack">

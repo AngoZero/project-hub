@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DEFAULT_APP_STORE } from '../app/defaultStore';
 import { resolveLanguagePreference, translate, type TranslationKey } from '../app/i18n';
-import type { ActionResult, AppStore, CatalogFilters, NavItem, Preferences, ProjectActionKind, ProjectRecord, RootFolder, ToolIntegration } from '../app/types';
-import { deleteProject, deleteRootFolder, detectIntegrations, loadAppStore, runProjectAction, savePreferences, saveProject, saveRootFolder, scanProjects } from '../services/desktopApi';
+import type { ActionResult, AppStore, CatalogFilters, NavItem, Preferences, ProjectActionKind, ProjectRecord, RootFolder, ToolIntegration, ToolOverride } from '../app/types';
+import { deleteProject, deleteRootFolder, detectIntegrations, loadAppStore, runProjectAction, savePreferences, saveProject, saveRootFolder, saveToolOverrides, scanProjects } from '../services/desktopApi';
 import { filterProjects, sortProjects } from '../utils/projectFilters';
 
 const INITIAL_FILTERS: CatalogFilters = {
@@ -214,6 +214,21 @@ export function useProjectHub() {
     }
   }
 
+  async function persistToolOverrides(toolOverrides: ToolOverride[]): Promise<void> {
+    setIsSaving(true);
+    try {
+      const nextStore = await saveToolOverrides(toolOverrides);
+      setStore(nextStore);
+      await refreshIntegrations();
+      setStatusMessage({ ok: true, message: translate(resolvedLanguage, 'statusSuccessPreferences') });
+    } catch (error) {
+      setStatusMessage({ ok: false, message: getErrorMessage(resolvedLanguage, error, 'statusErrorPreferences') });
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   async function completeOnboarding(root: RootFolder): Promise<void> {
     setIsSaving(true);
     try {
@@ -275,11 +290,14 @@ export function useProjectHub() {
     setStatusMessage(null);
   }
 
-  async function refreshIntegrations(): Promise<void> {
+  async function refreshIntegrations(): Promise<ToolIntegration[]> {
     try {
-      setToolIntegrations(await detectIntegrations());
+      const integrations = await detectIntegrations();
+      setToolIntegrations(integrations);
+      return integrations;
     } catch {
       setToolIntegrations([]);
+      return [];
     }
   }
 
@@ -311,6 +329,7 @@ export function useProjectHub() {
     persistRoot,
     removeRoot,
     persistPreferences,
+    persistToolOverrides,
     refreshScan,
     executeProjectAction,
     resolvedLanguage,
