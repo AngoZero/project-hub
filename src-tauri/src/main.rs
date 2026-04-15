@@ -26,6 +26,7 @@ fn main() {
       commands::save_root_folder,
       commands::delete_root_folder,
       commands::save_preferences,
+      commands::save_tool_overrides,
       commands::run_project_action,
     ])
     .run(tauri::generate_context!())

@@ -1,7 +1,7 @@
 use crate::{
   project_actions, scanner,
-  storage::{self, sanitize_project, sanitize_root},
-  types::{ActionResult, AppStore, Preferences, ProjectActionPayload, ProjectRecord, RootChildRule, RootFolder, RootFolderPreview, ToolIntegration},
+  storage::{self, sanitize_project, sanitize_root, sanitize_tool_overrides},
+  types::{ActionResult, AppStore, Preferences, ProjectActionPayload, ProjectRecord, RootChildRule, RootFolder, RootFolderPreview, ToolIntegration, ToolOverride},
 };
 use tauri::{AppHandle, State};
 
@@ -48,9 +48,10 @@ pub fn authorize_destructive_action(state: State<AppState>, language: String) ->
 }
 
 #[tauri::command]
-pub fn detect_integrations(state: State<AppState>) -> Result<Vec<ToolIntegration>, String> {
+pub fn detect_integrations(app: AppHandle, state: State<AppState>) -> Result<Vec<ToolIntegration>, String> {
   let _guard = state.lock.lock().map_err(|_| "App state lock is poisoned.")?;
-  Ok(crate::integrations::detect_integrations())
+  let store = storage::load_store(&app)?;
+  Ok(crate::integrations::detect_integrations(&store.tool_overrides))
 }
 
 #[tauri::command]
@@ -114,6 +115,15 @@ pub fn save_preferences(app: AppHandle, state: State<AppState>, preferences: Pre
   let _guard = state.lock.lock().map_err(|_| "App state lock is poisoned.")?;
   let mut store = storage::load_store(&app)?;
   store.preferences = preferences;
+  storage::save_store(&app, &store)?;
+  Ok(store)
+}
+
+#[tauri::command]
+pub fn save_tool_overrides(app: AppHandle, state: State<AppState>, tool_overrides: Vec<ToolOverride>) -> Result<AppStore, String> {
+  let _guard = state.lock.lock().map_err(|_| "App state lock is poisoned.")?;
+  let mut store = storage::load_store(&app)?;
+  store.tool_overrides = sanitize_tool_overrides(&tool_overrides);
   storage::save_store(&app, &store)?;
   Ok(store)
 }

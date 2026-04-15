@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, RefreshCcw, Search, SlidersHorizontal, X } from 'lucide-react';
 import { I18nProvider, getFileManagerLabel, getProjectStatusLabel, getProjectTypeLabel, getViewLabel, useI18n } from './app/i18n';
-import { PROJECT_STATUSES, PROJECT_TYPES, type ProjectRecord, type RootFolder, type RootFolderPreview, type SubProject } from './app/types';
+import { PROJECT_STATUSES, PROJECT_TYPES, type ProjectRecord, type QuickCommand, type RootFolder, type RootFolderPreview, type SubProject } from './app/types';
 import { OnboardingView } from './components/OnboardingView';
 import { ProjectCard } from './components/ProjectCard';
 import { ProjectDetailModal } from './components/ProjectDetailModal';
@@ -256,6 +256,29 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
 
     setProjectDetailOpen(false);
     setDetailHistory([]);
+  }
+
+  async function handleSaveSubProjectCommands(parentProjectId: string, subProjectPath: string, quickCommands: QuickCommand[]): Promise<void> {
+    const parentProject = hub.store.projects.find((project) => project.id === parentProjectId);
+    if (!parentProject) {
+      return;
+    }
+
+    await hub.persistProject(
+      {
+        ...parentProject,
+        subProjects: parentProject.subProjects.map((subProject) => (
+          subProject.path === subProjectPath
+            ? { ...subProject, quickCommands }
+            : subProject
+        )),
+      },
+      {
+        successMessage: t('statusSuccessSubProjectCommandsSaved', {
+          name: parentProject.subProjects.find((subProject) => subProject.path === subProjectPath)?.name ?? parentProject.name,
+        }),
+      },
+    );
   }
 
   function requestDeleteProject(projectId: string): void {
@@ -537,8 +560,10 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
           <SettingsView
             preferences={hub.store.preferences}
             integrations={hub.toolIntegrations}
+            toolOverrides={hub.store.toolOverrides}
             onSave={hub.persistPreferences}
             onRefreshIntegrations={hub.refreshIntegrations}
+            onSaveToolOverrides={hub.persistToolOverrides}
           />
         ) : null}
       </main>
@@ -559,6 +584,7 @@ function AppFrame({ hub }: { hub: ReturnType<typeof useProjectHub> }) {
         onDelete={requestDeleteProject}
         onAction={(projectId, kind, targetId, pathOverride) => void hub.executeProjectAction(projectId, kind, targetId, pathOverride)}
         onSelectSubProject={handleSelectSubProject}
+        onSaveSubProjectCommands={handleSaveSubProjectCommands}
         integrations={hub.toolIntegrations}
       />
 

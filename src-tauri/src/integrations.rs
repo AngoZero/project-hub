@@ -1,6 +1,6 @@
 use crate::{
-  types::ToolIntegration,
-  utils::command_exists,
+  types::{ToolIntegration, ToolOverride},
+  utils::{command_exists, resolve_command_path},
 };
 #[cfg(target_os = "windows")]
 use std::env;
@@ -32,6 +32,15 @@ struct ToolDefinition {
   #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
   windows_paths: &'static [&'static str],
   system_available: bool,
+}
+
+#[derive(Debug, Clone)]
+struct IntegrationResolution {
+  installed: bool,
+  launch_method: LaunchMethod,
+  command: Option<String>,
+  executable_path: Option<String>,
+  reason: Option<String>,
 }
 
 #[cfg(target_os = "windows")]
@@ -158,44 +167,145 @@ const AGENT_DEFINITIONS: &[ToolDefinition] = &[
   },
 ];
 
-pub fn detect_integrations() -> Vec<ToolIntegration> {
+pub fn detect_integrations(overrides: &[ToolOverride]) -> Vec<ToolIntegration> {
   let mut integrations = vec![file_manager_integration(), terminal_integration()];
-  integrations.extend(EDITOR_DEFINITIONS.iter().map(detect_definition));
-  integrations.extend(AGENT_DEFINITIONS.iter().map(detect_definition));
+  integrations.extend(EDITOR_DEFINITIONS.iter().map(|definition| detect_definition(definition, overrides)));
+  integrations.extend(AGENT_DEFINITIONS.iter().map(|definition| detect_definition(definition, overrides)));
   integrations
 }
 
-pub fn find_installed_integration(id: &str) -> Option<ToolIntegration> {
-  detect_integrations()
+pub fn find_installed_integration(overrides: &[ToolOverride], id: &str) -> Option<ToolIntegration> {
+  detect_integrations(overrides)
     .into_iter()
     .find(|integration| integration.id == id && integration.installed)
 }
 
-fn detect_definition(definition: &ToolDefinition) -> ToolIntegration {
-  if let Some(command) = definition.commands.iter().find(|command| command_exists(command)) {
-    return build_integration(definition, true, LaunchMethod::Command, Some((*command).into()), None, None);
+fn detect_definition(definition: &ToolDefinition, overrides: &[ToolOverride]) -> ToolIntegration {
+  let detected = detect_definition_installation(definition);
+  let integration = build_integration(
+    definition,
+    detected.installed,
+    "detected",
+    detected.launch_method,
+    detected.command.clone(),
+    detected.executable_path.clone(),
+    detected.command.clone(),
+    detected.executable_path.clone(),
+    detected.reason.clone(),
+  );
+
+  if let Some(override_item) = overrides.iter().find(|override_item| override_item.tool_id == definition.id && override_item.enabled) {
+    return apply_override(definition, integration, override_item);
+  }
+
+  integration
+}
+
+fn detect_definition_installation(definition: &ToolDefinition) -> IntegrationResolution {
+  if let Some(command) = definition.commands.iter().find_map(|command| resolve_command_path(command)) {
+    return IntegrationResolution {
+      installed: true,
+      launch_method: LaunchMethod::Command,
+      command: Some(command),
+      executable_path: None,
+      reason: None,
+    };
   }
 
   if let Some(path) = app_path(definition) {
-    return build_integration(definition, true, LaunchMethod::Executable, None, Some(path), None);
+    return IntegrationResolution {
+      installed: true,
+      launch_method: LaunchMethod::Executable,
+      command: None,
+      executable_path: Some(path),
+      reason: None,
+    };
   }
+
+  IntegrationResolution {
+    installed: definition.system_available,
+    launch_method: LaunchMethod::System,
+    command: None,
+    executable_path: None,
+    reason: Some("Not found on this machine.".into()),
+  }
+}
+
+fn apply_override(definition: &ToolDefinition, integration: ToolIntegration, override_item: &ToolOverride) -> ToolIntegration {
+  let resolution = match override_item.launch_method.as_str() {
+    "command" => {
+      let configured_command = override_item.command.clone().filter(|value| !value.trim().is_empty());
+      let resolved_command = configured_command
+        .as_deref()
+        .and_then(resolve_command_path)
+        .or(configured_command.clone());
+
+      IntegrationResolution {
+        installed: configured_command.as_deref().and_then(resolve_command_path).is_some(),
+        launch_method: LaunchMethod::Command,
+        command: resolved_command,
+        executable_path: None,
+        reason: if configured_command.is_some() {
+          Some("Manual command could not be resolved.".into())
+        } else {
+          Some("Manual command is required.".into())
+        },
+      }
+    }
+    "executable" => {
+      let configured_path = override_item.executable_path.clone().filter(|value| !value.trim().is_empty());
+      let installed = configured_path
+        .as_deref()
+        .map(|value| PathBuf::from(value).exists())
+        .unwrap_or(false);
+
+      IntegrationResolution {
+        installed,
+        launch_method: LaunchMethod::Executable,
+        command: None,
+        executable_path: configured_path,
+        reason: if installed {
+          None
+        } else {
+          Some("Manual executable path was not found.".into())
+        },
+      }
+    }
+    _ => detected_to_manual_fallback(&integration),
+  };
 
   build_integration(
     definition,
-    definition.system_available,
-    LaunchMethod::System,
-    None,
-    None,
-    Some("Not found on this machine.".into()),
+    resolution.installed,
+    "manual",
+    resolution.launch_method,
+    resolution.command,
+    resolution.executable_path,
+    integration.detected_command,
+    integration.detected_executable_path,
+    if resolution.installed { None } else { resolution.reason },
   )
+}
+
+fn detected_to_manual_fallback(integration: &ToolIntegration) -> IntegrationResolution {
+  IntegrationResolution {
+    installed: integration.installed,
+    launch_method: launch_method_from_name(&integration.launch_method),
+    command: integration.command.clone(),
+    executable_path: integration.executable_path.clone(),
+    reason: integration.reason.clone(),
+  }
 }
 
 fn build_integration(
   definition: &ToolDefinition,
   installed: bool,
+  source: &str,
   launch_method: LaunchMethod,
   command: Option<String>,
   executable_path: Option<String>,
+  detected_command: Option<String>,
+  detected_executable_path: Option<String>,
   reason: Option<String>,
 ) -> ToolIntegration {
   ToolIntegration {
@@ -204,9 +314,12 @@ fn build_integration(
     category: category_name(definition.category).into(),
     brand: definition.brand.into(),
     installed,
+    source: source.into(),
     launch_method: launch_method_name(launch_method).into(),
     command,
     executable_path,
+    detected_command,
+    detected_executable_path,
     reason,
   }
 }
@@ -218,9 +331,12 @@ fn file_manager_integration() -> ToolIntegration {
     category: category_name(ToolCategory::FileManager).into(),
     brand: "fileManager".into(),
     installed: true,
+    source: "system".into(),
     launch_method: launch_method_name(LaunchMethod::System).into(),
     command: None,
     executable_path: None,
+    detected_command: None,
+    detected_executable_path: None,
     reason: None,
   }
 }
@@ -235,9 +351,12 @@ fn terminal_integration() -> ToolIntegration {
       category: category_name(ToolCategory::Terminal).into(),
       brand: "terminal".into(),
       installed: command_exists(command) || command == "powershell",
+      source: "system".into(),
       launch_method: launch_method_name(LaunchMethod::Command).into(),
       command: Some(command.into()),
       executable_path: None,
+      detected_command: Some(command.into()),
+      detected_executable_path: None,
       reason: None,
     };
   }
@@ -257,9 +376,12 @@ fn terminal_integration() -> ToolIntegration {
       category: category_name(ToolCategory::Terminal).into(),
       brand: "terminal".into(),
       installed: true,
+      source: "system".into(),
       launch_method: launch_method_name(LaunchMethod::System).into(),
       command: None,
       executable_path: None,
+      detected_command: None,
+      detected_executable_path: None,
       reason: None,
     };
   }
@@ -271,9 +393,12 @@ fn terminal_integration() -> ToolIntegration {
     category: category_name(ToolCategory::Terminal).into(),
     brand: "terminal".into(),
     installed: false,
+    source: "system".into(),
     launch_method: launch_method_name(LaunchMethod::System).into(),
     command: None,
     executable_path: None,
+    detected_command: None,
+    detected_executable_path: None,
     reason: Some("Unsupported platform.".into()),
   }
 }
@@ -309,6 +434,14 @@ fn launch_method_name(method: LaunchMethod) -> &'static str {
     LaunchMethod::Command => "command",
     LaunchMethod::Executable => "executable",
     LaunchMethod::System => "system",
+  }
+}
+
+fn launch_method_from_name(method: &str) -> LaunchMethod {
+  match method {
+    "command" => LaunchMethod::Command,
+    "executable" => LaunchMethod::Executable,
+    _ => LaunchMethod::System,
   }
 }
 

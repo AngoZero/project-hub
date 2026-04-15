@@ -19,6 +19,16 @@ pub struct QuickCommand {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ToolOverride {
+  pub tool_id: String,
+  pub enabled: bool,
+  pub launch_method: String,
+  pub command: Option<String>,
+  pub executable_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectUrl {
   pub id: String,
   pub label: String,
@@ -104,6 +114,8 @@ pub struct SubProject {
   pub project_type: String,
   pub detected_files: Vec<String>,
   pub git: ProjectGitInfo,
+  #[serde(default)]
+  pub quick_commands: Vec<QuickCommand>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -188,16 +200,19 @@ pub struct AppStore {
   pub projects: Vec<ProjectRecord>,
   #[serde(default)]
   pub workspaces: Vec<Workspace>,
+  #[serde(default)]
+  pub tool_overrides: Vec<ToolOverride>,
   pub preferences: Preferences,
 }
 
 impl Default for AppStore {
   fn default() -> Self {
     Self {
-      version: 3,
+      version: 4,
       roots: Vec::new(),
       projects: Vec::new(),
       workspaces: Vec::new(),
+      tool_overrides: Vec::new(),
       preferences: Preferences::default(),
     }
   }
@@ -222,9 +237,12 @@ pub struct ToolIntegration {
   pub category: String,
   pub brand: String,
   pub installed: bool,
+  pub source: String,
   pub launch_method: String,
   pub command: Option<String>,
   pub executable_path: Option<String>,
+  pub detected_command: Option<String>,
+  pub detected_executable_path: Option<String>,
   pub reason: Option<String>,
 }
 

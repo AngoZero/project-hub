@@ -16,6 +16,7 @@ export const NAV_ITEMS = ['dashboard', 'catalog', 'roots', 'settings'] as const;
 export const APP_LANGUAGES = ['system', 'es', 'en'] as const;
 export const TOOL_CATEGORIES = ['editor', 'agent', 'terminal', 'fileManager'] as const;
 export const LAUNCH_METHODS = ['command', 'executable', 'system'] as const;
+export const TOOL_INTEGRATION_SOURCES = ['detected', 'manual', 'system'] as const;
 
 export type ProjectType = (typeof PROJECT_TYPES)[number];
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
@@ -26,6 +27,7 @@ export type ResolvedLanguage = Exclude<LanguagePreference, 'system'>;
 export type RootChildKind = (typeof ROOT_CHILD_KINDS)[number];
 export type ToolCategory = (typeof TOOL_CATEGORIES)[number];
 export type LaunchMethod = (typeof LAUNCH_METHODS)[number];
+export type ToolIntegrationSource = (typeof TOOL_INTEGRATION_SOURCES)[number];
 export type ProjectActionKind =
   | 'openFinder'
   | 'openCode'
@@ -70,6 +72,15 @@ export interface SubProject {
   projectType: ProjectType;
   detectedFiles: string[];
   git: ProjectGitInfo;
+  quickCommands: QuickCommand[];
+}
+
+export interface ToolOverride {
+  toolId: string;
+  enabled: boolean;
+  launchMethod: Exclude<LaunchMethod, 'system'>;
+  command: string | null;
+  executablePath: string | null;
 }
 
 export interface Workspace {
@@ -148,6 +159,7 @@ export interface AppStore {
   roots: RootFolder[];
   projects: ProjectRecord[];
   workspaces: Workspace[];
+  toolOverrides: ToolOverride[];
   preferences: Preferences;
 }
 
@@ -172,8 +184,11 @@ export interface ToolIntegration {
   category: ToolCategory;
   brand: string;
   installed: boolean;
+  source: ToolIntegrationSource;
   launchMethod: LaunchMethod;
   command: string | null;
   executablePath: string | null;
+  detectedCommand: string | null;
+  detectedExecutablePath: string | null;
   reason: string | null;
 }
